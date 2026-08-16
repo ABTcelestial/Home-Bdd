@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Configuration locale du serveur (racine, hash du mot de passe, secret)
+data/
+.env
+.env.local
+
+# Journaux du service Windows (NSSM)
+journaux/
+
+# Divers
+.DS_Store
+Thumbs.db
+*.log
+tsconfig.tsbuildinfo

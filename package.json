@@ -1,0 +1,24 @@
+{
+  "name": "celestial-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Celestial Hub - gestionnaire de fichiers en reseau local",
+  "scripts": {
+    "dev": "node server.js --dev",
+    "build": "next build",
+    "start": "node server.js",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "next": "^15.5.23",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

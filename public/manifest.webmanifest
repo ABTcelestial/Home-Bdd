@@ -1,0 +1,14 @@
+{
+  "name": "Celestial Hub",
+  "short_name": "Hub",
+  "description": "Gestionnaire de fichiers en reseau local",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
