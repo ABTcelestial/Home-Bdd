@@ -32,6 +32,7 @@ type Reglages = {
   port: number
   adresses: string[]
   hote: string
+  nomReseau: string
   plateforme: string
   totals: { dossiers: number; fichiers: number; taille: number }
 }
@@ -118,6 +119,24 @@ export function PageAdmin() {
       setOccupe(null)
     }
   }
+
+  // Toutes les facons de joindre le Hub, de la plus lisible a la plus sure.
+  const acces = reglages
+    ? [
+        {
+          url: `http://${reglages.nomReseau}:${reglages.port}`,
+          note: 'Par le nom du PC : PC Windows du reseau, sans rien configurer.',
+        },
+        {
+          url: `http://${reglages.nomReseau}.local:${reglages.port}`,
+          note: 'Meme nom en .local : iPhone, iPad, Mac et Android recents.',
+        },
+        ...reglages.adresses.map((ip) => ({
+          url: `http://${ip}:${reglages.port}`,
+          note: 'Par adresse IP : fonctionne sur tous les appareils, en toutes circonstances.',
+        })),
+      ]
+    : []
 
   return (
     <div className="app">
@@ -258,35 +277,39 @@ export function PageAdmin() {
               <p className="champ-aide">
                 Adresse a mettre en raccourci sur le bureau du PC client (reseau local uniquement) :
               </p>
-              {reglages?.adresses.length ? (
-                reglages.adresses.map((ip) => (
-                  <div key={ip} className="ligne-champ">
-                    <input
-                      className="champ mono"
-                      readOnly
-                      value={`http://${ip}:${reglages.port}`}
-                      onFocus={(e) => e.currentTarget.select()}
-                      aria-label={`Adresse ${ip}`}
-                    />
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        void navigator.clipboard?.writeText(`http://${ip}:${reglages.port}`)
-                        toasts.succes('Adresse copiee.')
-                      }}
-                    >
-                      Copier
-                    </button>
+              {acces.length ? (
+                acces.map((entree) => (
+                  <div key={entree.url} className="champ-groupe">
+                    <div className="ligne-champ">
+                      <input
+                        className="champ mono"
+                        readOnly
+                        value={entree.url}
+                        onFocus={(e) => e.currentTarget.select()}
+                        aria-label={entree.url}
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(entree.url)
+                          toasts.succes('Adresse copiee.')
+                        }}
+                      >
+                        Copier
+                      </button>
+                    </div>
+                    <span className="champ-aide">{entree.note}</span>
                   </div>
                 ))
               ) : (
                 <p className="champ-aide">Aucune adresse reseau detectee.</p>
               )}
               <p className="champ-aide">
-                Machine : <span className="mono">{reglages?.hote}</span> - port{' '}
-                <span className="mono">{reglages?.port}</span>. Pensez a la reservation DHCP dans la box pour
-                que l&apos;adresse ne change jamais.
+                Nom du PC : <span className="mono">{reglages?.hote}</span> - port{' '}
+                <span className="mono">{reglages?.port}</span>. Les adresses par nom dependent du nom Windows
+                du PC serveur ; l&apos;adresse en chiffres, elle, marche toujours. Pensez a la reservation
+                DHCP dans la box pour qu&apos;elle ne change jamais.
               </p>
             </div>
           </section>

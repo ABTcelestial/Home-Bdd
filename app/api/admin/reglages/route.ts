@@ -43,6 +43,9 @@ export async function GET(req: Request) {
       port: Number(process.env.PORT || 3000),
       adresses: adressesReseau(),
       hote: os.hostname(),
+      // Nom par lequel les autres appareils peuvent joindre le Hub sans retenir
+      // l'IP (nom Windows du PC, ou HUB_HOSTNAME si on veut un nom different).
+      nomReseau: (process.env.HUB_HOSTNAME || os.hostname()).toLowerCase(),
       plateforme: process.platform,
       totals,
     })

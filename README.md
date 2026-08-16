@@ -113,10 +113,52 @@ DHCP) pour le PC serveur, afin que l'adresse ne change jamais.
 **Aucune redirection de port ne doit etre configuree** : l'application n'est pas
 concue pour etre exposee sur internet.
 
+## Donner un nom au serveur (au lieu d'une adresse IP)
+
+Pour taper `http://celestial-hub:3000` plutot que `http://192.168.1.42:3000`.
+
+**Solution recommandee - renommer le PC serveur.** Windows annonce lui-meme son
+nom sur le reseau local : aucun reglage n'est alors necessaire sur les autres
+PC.
+
+```powershell
+# Sur le PC serveur, PowerShell en administrateur. Redemarrage ensuite.
+.\deploiement\nom-reseau.ps1 -Serveur -Nom celestial-hub
+```
+
+Le nom est limite a 15 caracteres (contrainte Windows) et le script refuse les
+noms invalides avant de toucher a quoi que ce soit.
+
+**Solution de repli - fichier hosts du PC client.** Si l'on prefere ne pas
+renommer le PC serveur, ou si un PC ne resout pas le nom :
+
+```powershell
+# Sur le PC client, PowerShell en administrateur
+.\deploiement\nom-reseau.ps1 -Client -Adresse 192.168.1.42 -Nom celestial-hub
+```
+
+Le fichier `hosts` est sauvegarde avant modification. A refaire si l'adresse IP
+du serveur change, d'ou l'interet de la reservation DHCP.
+
+**Sur telephone et tablette.** `http://celestial-hub.local:3000` fonctionne sur
+iPhone, iPad, Mac et Android recents. Pour les appareils qui ne resolvent ni le
+nom Windows ni le `.local`, deux options : declarer le nom dans la box (bail
+DHCP statique avec nom d'hote), ou garder l'adresse IP, qui marche toujours.
+
+Les trois formes d'adresse sont affichees, pretes a copier, dans **Reglages >
+Acces depuis les autres PC**.
+
+> A savoir : le mot de passe est memorise par adresse. En passant de l'IP au
+> nom, chaque appareil se reconnecte une fois.
+>
+> Un nom personnalise, different du nom Windows du PC, peut etre affiche dans
+> les reglages via la variable `HUB_HOSTNAME` (la resolution reseau, elle,
+> reste assuree par le nom Windows ou par le fichier `hosts`).
+
 ## Sur le PC client
 
 ```powershell
-.\deploiement\creer-raccourci.ps1 -Adresse http://192.168.1.42:3000
+.\deploiement\creer-raccourci.ps1 -Adresse http://celestial-hub:3000
 ```
 
 Le script depose un raccourci "Celestial Hub" sur le bureau. Rien d'autre a
