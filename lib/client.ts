@@ -58,6 +58,37 @@ export function messageErreur(err: unknown): string {
   return 'Erreur inconnue.'
 }
 
+/**
+ * Copie dans le presse-papiers. L'API moderne n'existe qu'en contexte securise :
+ * elle marche en http://localhost mais pas en http://celestial-hub:3000, d'ou
+ * le repli par un champ temporaire.
+ */
+export async function copierTexte(texte: string): Promise<boolean> {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(texte)
+      return true
+    }
+  } catch {
+    /* refus du navigateur : on tente le repli */
+  }
+  try {
+    const zone = document.createElement('textarea')
+    zone.value = texte
+    zone.setAttribute('readonly', '')
+    zone.style.position = 'fixed'
+    zone.style.top = '-1000px'
+    zone.style.opacity = '0'
+    document.body.appendChild(zone)
+    zone.select()
+    const copie = document.execCommand('copy')
+    document.body.removeChild(zone)
+    return copie
+  } catch {
+    return false
+  }
+}
+
 /** URL de telechargement d'un fichier. */
 export function urlTelechargement(chemin: string, enLigne = false): string {
   return `/api/telecharger?chemin=${encodeURIComponent(chemin)}${enLigne ? '&vue=1' : ''}`

@@ -5,6 +5,7 @@ import {
   Download,
   FilePen,
   FolderInput,
+  FolderOpen,
   Pencil,
   StickyNote,
   Trash2,
@@ -24,9 +25,11 @@ import type { FsNode } from '@/lib/types'
 export function PanneauDetail({
   noeud,
   note,
+  isServer,
   onFermer,
   onTelecharger,
   onOuvrir,
+  onOuvrirEmplacement,
   onRenommer,
   onDeplacer,
   onSupprimer,
@@ -34,9 +37,12 @@ export function PanneauDetail({
 }: {
   noeud: FsNode
   note: string
+  /** Vrai depuis le PC serveur : lui seul peut ouvrir l'Explorateur Windows. */
+  isServer: boolean
   onFermer: () => void
   onTelecharger: () => void
   onOuvrir: () => void
+  onOuvrirEmplacement: () => void
   onRenommer: () => void
   onDeplacer: () => void
   onSupprimer: () => void
@@ -123,6 +129,16 @@ export function PanneauDetail({
             {editable ? (
               <button type="button" className="btn" onClick={onOuvrir}>
                 <FilePen size={15} /> Ouvrir
+              </button>
+            ) : null}
+            {isServer ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={onOuvrirEmplacement}
+                title="Ouvrir le dossier dans l'Explorateur Windows du PC serveur"
+              >
+                <FolderOpen size={15} /> Ouvrir l&apos;emplacement
               </button>
             ) : null}
             <button type="button" className="btn" onClick={onRenommer}>

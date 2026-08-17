@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   Database,
   Download,
+  FolderOpen,
   FolderPlus,
   LogOut,
   MoreHorizontal,
@@ -32,7 +33,7 @@ import { Editeur } from './Editeur'
 import { Modale } from './Modale'
 import { SelecteurDossier } from './SelecteurDossier'
 import { useToasts } from './Toasts'
-import { apiPost, messageErreur, televerser, urlTelechargement } from '@/lib/client'
+import { apiPost, copierTexte, messageErreur, televerser, urlTelechargement } from '@/lib/client'
 import { fichiersChoisis, fichiersDeposes, type FichierDepose } from '@/lib/depot'
 import { baseName, joinRel, libelleDossier, parentOf, validateName } from '@/lib/chemins'
 import { formatSize, maybeText, extOf } from '@/lib/filetypes'
@@ -376,6 +377,38 @@ export function Hub() {
     [recharger, toasts],
   )
 
+  /**
+   * Ouvre l'element dans l'Explorateur du PC serveur. Quand le Hub tourne en
+   * service Windows il ne peut afficher aucune fenetre : on copie alors le
+   * chemin pour que le coller dans l'Explorateur reste a un raccourci pres.
+   */
+  const ouvrirEmplacement = useCallback(
+    async (chemin: string) => {
+      try {
+        const rep = await apiPost<{ ouvert: boolean; chemin: string; raison?: string }>(
+          '/api/ouvrir-emplacement',
+          { chemin },
+        )
+        if (rep.ouvert) {
+          toasts.succes('Explorateur ouvert sur le PC serveur.')
+          return
+        }
+        const cause =
+          rep.raison === 'service'
+            ? 'Le Hub tourne en service Windows : il ne peut pas ouvrir de fenetre sur ta session.'
+            : "L'Explorateur n'est disponible que sur un serveur Windows."
+        if (await copierTexte(rep.chemin)) {
+          toasts.succes(`${cause} Chemin copie : ${rep.chemin}`)
+        } else {
+          toasts.erreur(`${cause} Chemin : ${rep.chemin}`)
+        }
+      } catch (err) {
+        toasts.erreur(messageErreur(err))
+      }
+    },
+    [toasts],
+  )
+
   const deconnexion = useCallback(async () => {
     await apiPost('/api/auth/logout').catch(() => undefined)
     window.location.href = '/login'
@@ -563,9 +596,11 @@ export function Hub() {
             <PanneauDetail
               noeud={noeudActif}
               note={notes[noeudActif.path] ?? ''}
+              isServer={Boolean(donnees?.isServer)}
               onFermer={() => setCheminActif(null)}
               onTelecharger={() => telecharger(noeudActif)}
               onOuvrir={() => setEditeur(noeudActif.path)}
+              onOuvrirEmplacement={() => void ouvrirEmplacement(noeudActif.path)}
               onRenommer={() => setDialogue({ type: 'renommer', noeud: noeudActif })}
               onDeplacer={() => setDialogue({ type: 'deplacer', chemins: [noeudActif.path] })}
               onSupprimer={() => setDialogue({ type: 'supprimer', chemins: [noeudActif.path] })}
@@ -728,6 +763,7 @@ export function Hub() {
           onDeplacer={deplacer}
           onSupprimer={supprimer}
           onTelecharger={telecharger}
+          onOuvrirEmplacement={(chemin) => void ouvrirEmplacement(chemin)}
           onEditer={(chemin) => setEditeur(chemin)}
           onDetail={(noeud) => ouvrirElement(noeud)}
           onTeleverser={() => champFichiers.current?.click()}
@@ -758,6 +794,7 @@ function Dialogues(props: {
   onDeplacer: (chemins: string[], destination: string) => Promise<boolean>
   onSupprimer: (chemins: string[]) => Promise<boolean>
   onTelecharger: (noeud: FsNode) => void
+  onOuvrirEmplacement: (chemin: string) => void
   onEditer: (chemin: string) => void
   onDetail: (noeud: FsNode) => void
   onTeleverser: () => void
@@ -949,6 +986,18 @@ function Dialogues(props: {
               }}
             >
               <FilePen size={15} /> Ouvrir
+            </button>
+          ) : null}
+          {props.isServer ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                props.onOuvrirEmplacement(noeud.path)
+                props.onFermer()
+              }}
+            >
+              <FolderOpen size={15} /> Ouvrir l&apos;emplacement
             </button>
           ) : null}
           {!estFichier ? (
