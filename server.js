@@ -38,6 +38,25 @@ const dev = process.argv.includes('--dev') || process.env.NODE_ENV === 'developm
 const port = parseInt(process.env.PORT || '3000', 10)
 const hostname = process.env.HOST || '0.0.0.0'
 
+/**
+ * Paquet portable : la configuration est deja figee dans le build.
+ *
+ * Sans cette injection, Next relit next.config.mjs au demarrage, ce qui exige
+ * webpack — absent de la sortie autonome. Le serveur demarrait alors, mais
+ * toute page repondait en erreur. C'est exactement ce que fait le server.js
+ * genere par Next pour ses propres paquets autonomes.
+ */
+if (!dev && !process.env.__NEXT_PRIVATE_STANDALONE_CONFIG) {
+  try {
+    const requis = require('./.next/required-server-files.json')
+    if (requis && requis.config) {
+      process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(requis.config)
+    }
+  } catch {
+    // Build classique lance depuis le depot : Next lira next.config.mjs.
+  }
+}
+
 const app = next({ dev, hostname: '0.0.0.0', port })
 const handle = app.getRequestHandler()
 
