@@ -14,20 +14,25 @@ export class ApiError extends Error {
 }
 
 async function lire<T>(res: Response): Promise<T> {
-  if (res.status === 401) {
-    // Session expiree : retour au login en gardant la page demandee.
-    if (typeof window !== 'undefined') {
-      const suite = window.location.pathname + window.location.search
-      window.location.href = `/login?suite=${encodeURIComponent(suite)}`
-    }
-    throw new ApiError('Session expiree.', 401)
-  }
-
   let donnees: Record<string, unknown> = {}
   try {
     donnees = (await res.json()) as Record<string, unknown>
   } catch {
     if (!res.ok) throw new ApiError(`Erreur serveur (${res.status}).`, res.status)
+  }
+
+  // Session expiree : retour au login en gardant la page demandee.
+  //
+  // Le drapeau `auth: false` est pose par le middleware, et par lui seul. Sans
+  // cette condition, le 401 legitime de l'ecran de connexion ("mot de passe
+  // incorrect") declenchait le meme rechargement : la page revenait a zero sans
+  // afficher la moindre erreur, et le bouton avait l'air casse.
+  if (res.status === 401 && donnees.auth === false) {
+    if (typeof window !== 'undefined') {
+      const suite = window.location.pathname + window.location.search
+      window.location.href = `/login?suite=${encodeURIComponent(suite)}`
+    }
+    throw new ApiError('Session expiree.', 401)
   }
 
   if (!res.ok || donnees.ok === false) {
