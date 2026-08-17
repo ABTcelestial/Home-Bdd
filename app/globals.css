@@ -14,6 +14,13 @@
   --survol: #f4f5f7;
   --actif: #ebeef2;
   --surligne: #fff3c4;
+  /* Traits de liaison de l'arborescence : gris lisible, plus marque que les
+     bordures ordinaires, sinon la hierarchie ne se lit pas d'un coup d'oeil. */
+  --guide: #c3c8ce;
+  /* Decalage d'un niveau et hauteur du milieu d'une ligne : les traits sont
+     calcules a partir de ces deux valeurs, jamais en dur. */
+  --indent-arbre: 24px;
+  --centre-ligne: 18px;
   --accent: #1f6feb;
   --accent-doux: #e8f0fe;
   --danger: #d1242f;
@@ -484,6 +491,12 @@ textarea.champ {
 /* Au doigt il n'y a pas de survol : les actions restent visibles, et les
    petites cibles (chevron, case a cocher) sont agrandies. */
 @media (pointer: coarse), (max-width: 900px) {
+  :root {
+    /* Lignes plus hautes au doigt : le coude descend d'autant. Indentation
+       resserree pour qu'un arbre profond tienne encore sur un telephone. */
+    --centre-ligne: 24px;
+    --indent-arbre: 20px;
+  }
   .ligne {
     min-height: 48px;
     padding: 6px 10px;
@@ -556,39 +569,44 @@ textarea.champ {
 
 .branche {
   position: relative;
-  padding-left: 16px;
-}
-
-/* Ligne verticale descendante du style "tree" demande par le PRD. */
-.branche::before {
-  content: '';
-  position: absolute;
-  left: 7px;
-  top: 0;
-  bottom: 14px;
-  width: 1px;
-  background: var(--bordure);
+  padding-left: var(--indent-arbre);
 }
 
 .noeud {
   position: relative;
 }
 
-/* Petite ligne horizontale de connexion vers chaque element. */
+/* Traits de liaison facon explorateur de fichiers.
+   Le trait vertical est porte par chaque noeud, pas par la branche : c'est ce
+   qui permet au dernier enfant de s'arreter net sur son coude (└) au lieu de
+   laisser pendre un trait dans le vide.
+   Position horizontale : 20px = le centre du chevron de la ligne parente
+   (10px de padding + la moitie des 20px du chevron), moins l'indentation du
+   niveau. Le trait descend donc exactement de la fleche du parent. */
 .noeud::before {
   content: '';
   position: absolute;
-  left: -9px;
-  top: 18px;
-  width: 9px;
-  height: 1px;
-  background: var(--bordure);
+  left: calc(20px - var(--indent-arbre));
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--guide);
 }
 
-@media (pointer: coarse), (max-width: 900px) {
-  .noeud::before {
-    top: 24px;
-  }
+.noeud:last-child::before {
+  bottom: auto;
+  height: var(--centre-ligne);
+}
+
+/* Coude horizontal : du trait vertical jusqu'au bord du contenu de la ligne. */
+.noeud::after {
+  content: '';
+  position: absolute;
+  left: calc(20px - var(--indent-arbre));
+  top: var(--centre-ligne);
+  width: calc(var(--indent-arbre) - 10px);
+  height: 1px;
+  background: var(--guide);
 }
 
 .chevron {

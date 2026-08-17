@@ -214,8 +214,12 @@ function Noeud(
       ) : null}
       {estDossier && ouvert && (!noeud.children || noeud.children.length === 0) ? (
         <div className="branche">
-          <div className="ligne" style={{ color: 'var(--texte-faible)', fontSize: 12.5 }}>
-            Dossier vide
+          {/* Enveloppe .noeud : le placeholder recoit le meme coude que les
+              vrais enfants, sinon le trait du parent s'arrete dans le vide. */}
+          <div className="noeud">
+            <div className="ligne" style={{ color: 'var(--texte-faible)', fontSize: 12.5 }}>
+              Dossier vide
+            </div>
           </div>
         </div>
       ) : null}
