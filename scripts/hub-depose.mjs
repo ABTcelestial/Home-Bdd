@@ -31,7 +31,9 @@ hub-depose — deposer un livrable dans le Celestial Hub
 
   --projet <nom>        dossier du projet dans le Hub (ex: fonds, chantiers-mobile)
   --version <version>   1.0.0 pour une version publiee, 1.0.0-T4 pour un test
-  --fichier <chemin>    l'artefact a deposer (repetable)
+  --fichier <chemin>    l'artefact a deposer (repetable). Facultatif si --readme
+                        ou --checklist est fourni : documenter une version deja
+                        deposee ne doit pas obliger a recopier ses binaires.
   --bulle <texte>       ce que Ryan doit en faire (affiche dans l'app)
   --ton <ton>           info | action | alerte        (defaut: action)
   --marquer <nom>       ne faire briller que ce fichier du dossier de version
@@ -42,6 +44,8 @@ hub-depose — deposer un livrable dans le Celestial Hub
   --archiver            descend la version publiee actuelle dans archive/<AAAA-MM>/
   --pourquoi <texte>    raison de l'archivage, ecrite dans le NOTE.md du mois
   --racine <chemin>     racine du Hub (defaut: ${RACINE_DEFAUT}, ou HUB_ROOT)
+  --retirer <chemin>    eteint une marque (chemin relatif a la racine du Hub) et
+                        s'arrete la. Le fichier n'est pas supprime.
   --aide
 
 Regles appliquees :
@@ -147,13 +151,36 @@ async function main() {
   const racine = args.racine || process.env.HUB_ROOT || RACINE_DEFAUT
   const { projet, version } = args
 
+  // Retrait d'une marque : rien d'autre a fournir, et le fichier reste en place.
+  if (args.retirer) {
+    const cle = args.retirer.replace(/\\/g, '/').replace(/^\/+/, '')
+    const cible = path.join(racine, GUIDE)
+    let donnees = {}
+    try {
+      donnees = JSON.parse(await fsp.readFile(cible, 'utf8'))
+    } catch {
+      throw new Error(`${GUIDE} illisible ou absent : rien a retirer.`)
+    }
+    if (!(cle in donnees)) throw new Error(`Aucune marque sur "${cle}".`)
+    delete donnees[cle]
+    const tmp = cible + '.tmp'
+    await fsp.writeFile(tmp, JSON.stringify(donnees, null, 2) + '\n', 'utf8')
+    await fsp.rename(tmp, cible)
+    console.log(`retiree : ${cle}`)
+    return
+  }
+
   if (!projet || !PROJET.test(projet)) {
     throw new Error("--projet manquant ou invalide (minuscules, chiffres et tirets : 'chantiers-mobile').")
   }
   if (!version || !VERSION.test(version)) {
     throw new Error("--version manquante ou invalide (1.0.0, ou 1.0.0-T4 pour un test).")
   }
-  if (args.fichier.length === 0) throw new Error('--fichier manquant.')
+  // Documenter une version deja deposee est un cas legitime : on n'exige un
+  // artefact que si rien d'autre n'est fourni.
+  if (args.fichier.length === 0 && !args.readme && !args.checklist) {
+    throw new Error('Rien a deposer : donner --fichier, ou --readme / --checklist.')
+  }
   const ton = args.ton || 'action'
   if (!TONS.includes(ton)) throw new Error(`--ton doit valoir ${TONS.join(', ')}.`)
 
@@ -192,6 +219,7 @@ async function main() {
     console.log(`depose  : ${projet}/${version}/${nom}`)
   }
 
+  const docs = []
   for (const [option, cible] of [
     ['readme', 'README.md'],
     ['checklist', 'CHECKLIST.md'],
@@ -199,6 +227,7 @@ async function main() {
     if (!args[option]) continue
     if (!fs.existsSync(args[option])) throw new Error(`Fichier introuvable : ${args[option]}`)
     await fsp.copyFile(args[option], path.join(dossierVersion, cible))
+    docs.push(cible)
     console.log(`depose  : ${projet}/${version}/${cible}`)
   }
 
@@ -223,7 +252,8 @@ async function main() {
 
   // Un dossier avec un point d'entree ne doit pas allumer quatre marques pour
   // une seule chose a faire : --marquer designe la ligne qui brille.
-  let aMarquer = deposes
+  // Sans artefact, c'est la documentation qu'on vient de poser qui porte la marque.
+  let aMarquer = deposes.length > 0 ? deposes : docs
   if (args.marquer) {
     if (!fs.existsSync(path.join(dossierVersion, args.marquer))) {
       throw new Error(`--marquer "${args.marquer}" : ce fichier n'est pas dans ${projet}/${version}/.`)
