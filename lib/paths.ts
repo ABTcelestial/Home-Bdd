@@ -9,6 +9,7 @@ import { PathError, TRASH_DIR, normalizeRel } from './chemins'
 export {
   TRASH_DIR,
   DB_FILE,
+  GUIDE_FILE,
   PathError,
   validateName,
   normalizeRel,

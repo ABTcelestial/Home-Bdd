@@ -14,6 +14,9 @@
   --survol: #f4f5f7;
   --actif: #ebeef2;
   --surligne: #fff3c4;
+  /* Elements marques depuis .hub-guide.json : violet Celestial, tres dilue. */
+  --brille-fond: #faf7ff;
+  --brille-bord: #d9c9ff;
   /* Traits de liaison de l'arborescence : gris lisible, plus marque que les
      bordures ordinaires, sinon la hierarchie ne se lit pas d'un coup d'oeil. */
   --guide: #c3c8ce;
@@ -436,6 +439,160 @@ textarea.champ {
   }
   100% {
     background: transparent;
+  }
+}
+
+/* --------------------------------------------------------------- */
+/* Guidage : elements marques depuis .hub-guide.json                 */
+/* --------------------------------------------------------------- */
+
+/* Une ligne qui "brille" : halo doux qui respire, jamais de clignotement.
+   L'animation s'arrete si le systeme demande moins de mouvement (voir plus bas
+   la regle prefers-reduced-motion), le halo fixe suffit alors a reperer. */
+.ligne.brille {
+  background: var(--brille-fond);
+  box-shadow: inset 0 0 0 1px var(--brille-bord);
+  animation: respire 2.6s ease-in-out infinite;
+}
+
+@keyframes respire {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px var(--brille-bord), 0 0 0 0 rgba(124, 77, 232, 0);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px var(--brille-bord), 0 0 0 4px rgba(124, 77, 232, 0.13);
+  }
+}
+
+.bulle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(45%, 320px);
+  padding: 2px 9px 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--bordure);
+  background: var(--blanc);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--texte-doux);
+  /* La bulle n'attrape aucun clic : la ligne dessous reste la cible. */
+  pointer-events: none;
+}
+
+.bulle-texte {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulle-info {
+  border-color: #cfd9ff;
+  background: #f3f6ff;
+  color: #2c4a9a;
+}
+
+.bulle-action {
+  border-color: #d9c9ff;
+  background: #f6f1ff;
+  color: #5b34b8;
+}
+
+.bulle-alerte {
+  border-color: #ffd3ad;
+  background: #fff5eb;
+  color: #9a4f10;
+}
+
+/* Bouton compteur de l'entete. */
+.btn-guide {
+  border-color: #d9c9ff;
+  background: #f6f1ff;
+  color: #5b34b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-guide:hover {
+  background: #efe6ff;
+}
+
+/* Panneau "A finir". */
+.guide-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.guide-entree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--bordure);
+  border-left: 3px solid var(--bordure-forte);
+  border-radius: var(--rayon-s);
+}
+
+.guide-info {
+  border-left-color: #2c4a9a;
+}
+
+.guide-action {
+  border-left-color: #7c4de8;
+}
+
+.guide-alerte {
+  border-left-color: #d97706;
+}
+
+.guide-corps {
+  min-width: 0;
+  flex: 1;
+}
+
+.guide-nom {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.guide-absent {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.guide-texte {
+  margin-top: 4px;
+  color: var(--texte-doux);
+}
+
+.guide-actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Au telephone, les actions passent sous le texte plutot que de l'ecraser. */
+@media (max-width: 520px) {
+  .guide-entree {
+    flex-direction: column;
+  }
+  .guide-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+  .guide-actions .btn {
+    flex: 1;
   }
 }
 

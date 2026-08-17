@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getRoot } from '@/lib/config'
 import { readDb } from '@/lib/db'
+import { readGuide } from '@/lib/guide'
 import { checkRoot, scanRoot } from '@/lib/tree'
 import { currentVersion } from '@/lib/events'
 import { handle, isLocalRequest } from '@/lib/api'
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
         tree: [],
         notes: {},
         isServer,
+        guide: [],
         totals: { dossiers: 0, fichiers: 0, taille: 0 },
         ok: false,
         erreur: etat.erreur,
@@ -32,12 +34,15 @@ export async function GET(req: Request) {
 
     const force = new URL(req.url).searchParams.get('rescan') === '1'
     const [scan, db] = await Promise.all([scanRoot(force), readDb()])
+    const guide = await readGuide(db.guideVus)
     const payload: TreePayload = {
       racine,
       version: currentVersion(),
       tree: scan.tree,
       notes: db.notes,
       isServer,
+      guide: guide.marques,
+      guideErreur: guide.erreur,
       totals: scan.totals,
       ok: true,
     }

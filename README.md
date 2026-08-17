@@ -24,6 +24,8 @@ televerser, organiser et supprimer les fichiers du PC serveur.
 | Editeur de texte | Ouverture des fichiers texte, apercu Markdown, **cases a cocher cliquables**, Ctrl+S, avertissement si conflit |
 | Temps reel | SSE + polling de secours : un fichier ajoute depuis l'explorateur Windows apparait tout seul |
 | Reglages | Choix du dossier racine (avec explorateur), mot de passe, re-scan, adresses reseau - **PC serveur uniquement** |
+| Emplacement | "Ouvrir l'emplacement" lance l'Explorateur Windows sur l'element - **PC serveur uniquement** |
+| Guidage | Un outil exterieur (Claude Code, script de build) fait briller un element et y accroche une bulle - voir `docs/guidage.md` |
 
 ### Multi-appareils
 
