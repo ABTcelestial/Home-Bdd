@@ -34,6 +34,9 @@ hub-depose — deposer un livrable dans le Celestial Hub
   --fichier <chemin>    l'artefact a deposer (repetable)
   --bulle <texte>       ce que Ryan doit en faire (affiche dans l'app)
   --ton <ton>           info | action | alerte        (defaut: action)
+  --marquer <nom>       ne faire briller que ce fichier du dossier de version
+                        (defaut: tous les artefacts deposes). A utiliser quand
+                        le dossier a un point d'entree : le guide, pas l'APK.
   --readme <chemin>     README.md a placer dans le dossier de version
   --checklist <chemin>  CHECKLIST.md a placer dans le dossier de version
   --archiver            descend la version publiee actuelle dans archive/<AAAA-MM>/
@@ -199,9 +202,12 @@ async function main() {
     console.log(`depose  : ${projet}/${version}/${cible}`)
   }
 
-  // README minimal : mieux qu'un dossier muet dans six mois.
+  // README minimal : mieux qu'un dossier muet dans six mois. Mais s'il y a deja
+  // de la documentation dans le dossier (un "0 - LIS-MOI.md" par exemple), un
+  // squelette vide ne ferait qu'ajouter du bruit a cote.
+  const documente = fs.readdirSync(dossierVersion).some((n) => n.toLowerCase().endsWith('.md'))
   const readme = path.join(dossierVersion, 'README.md')
-  if (!fs.existsSync(readme)) {
+  if (!documente && !fs.existsSync(readme)) {
     await fsp.writeFile(
       readme,
       `# ${projet} ${version}\n\n` +
@@ -214,12 +220,23 @@ async function main() {
   }
 
   const bulle = args.bulle || (estTest ? 'Build de test a verifier' : `${projet} ${version} publiee`)
+
+  // Un dossier avec un point d'entree ne doit pas allumer quatre marques pour
+  // une seule chose a faire : --marquer designe la ligne qui brille.
+  let aMarquer = deposes
+  if (args.marquer) {
+    if (!fs.existsSync(path.join(dossierVersion, args.marquer))) {
+      throw new Error(`--marquer "${args.marquer}" : ce fichier n'est pas dans ${projet}/${version}/.`)
+    }
+    aMarquer = [args.marquer]
+  }
+
   const entrees = {}
-  for (const nom of deposes) {
+  for (const nom of aMarquer) {
     entrees[`${projet}/${version}/${nom}`] = { brille: true, bulle, ton }
   }
   await majGuide(racine, entrees)
-  console.log(`marque  : ${deposes.length} element(s) dans ${GUIDE} — "${bulle}"`)
+  console.log(`marque  : ${aMarquer.length} element(s) dans ${GUIDE} — "${bulle}"`)
 }
 
 main().catch((err) => {
