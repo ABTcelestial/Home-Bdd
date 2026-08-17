@@ -10,6 +10,13 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   const encoder = new TextEncoder()
 
+  // Le nettoyage doit etre atteignable depuis `cancel` autant que depuis
+  // `start` : un navigateur qui lache le flux (onglet ferme, telephone
+  // verrouille, WiFi qui bascule) ne declenche pas toujours `req.signal`.
+  // Sans ce chemin, le ping continuait a ecrire toutes les 25 s dans un flux
+  // mort et l'abonnement n'etait jamais retire.
+  let fermer = () => {}
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false
@@ -18,7 +25,8 @@ export async function GET(req: Request) {
         try {
           controller.enqueue(encoder.encode(payload))
         } catch {
-          closed = true
+          // Flux deja ferme : on arrete tout plutot que de reessayer sans fin.
+          fermer()
         }
       }
 
@@ -29,7 +37,7 @@ export async function GET(req: Request) {
       // Ping regulier : garde la connexion ouverte a travers les proxys / WiFi.
       const ping = setInterval(() => send(`: ping\n\n`), 25_000)
 
-      const close = () => {
+      fermer = () => {
         if (closed) return
         closed = true
         clearInterval(ping)
@@ -41,7 +49,10 @@ export async function GET(req: Request) {
         }
       }
 
-      req.signal.addEventListener('abort', close)
+      req.signal.addEventListener('abort', fermer)
+    },
+    cancel() {
+      fermer()
     },
   })
 
