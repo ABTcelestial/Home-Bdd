@@ -135,11 +135,13 @@ async function archiver(dossierProjet, version, pourquoi) {
   // plutot que de laisser rename() echouer sur un message d systeme illisible.
   const destination = path.join(cible, version)
   if (fs.existsSync(destination)) {
-    const repli = `${version}-publiee-${jourCourant().slice(8)}-${jourCourant().slice(5, 7)}`
+    // Le dossier doit nommer la date de PUBLICATION du binaire qu il contient,
+    // pas celle de l archivage : c est elle qui l identifie six mois plus tard.
+    // Le script ne la connait pas — il la demande au lieu de l inventer.
     throw new Error(
       `archive/${mois}/${version}/ existe deja et contient un AUTRE binaire du meme numero. ` +
-        `Descends la version publiee a la main dans archive/${mois}/${repli}/, ajoute la raison ` +
-        `au NOTE.md du mois, puis relance SANS --archiver.`,
+        `Descends la version publiee a la main dans archive/${mois}/${version}-publiee-<JJ-MM de sa publication>/, ` +
+        `ajoute la raison au NOTE.md du mois, puis relance SANS --archiver.`,
     )
   }
   await fsp.rename(path.join(dossierProjet, version), destination)
