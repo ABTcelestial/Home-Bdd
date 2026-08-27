@@ -51,6 +51,10 @@ hub-depose — deposer un livrable dans le Celestial Hub
 Regles appliquees :
   - une version SANS suffixe -T est la version publiee ; il ne peut y en avoir
     qu'une hors archive/ (utiliser --archiver pour remplacer l'ancienne) ;
+  - un artefact deja present dans une version PUBLIEE n'est jamais ecrase : il
+    faut --archiver --pourquoi pour le descendre d'abord (un README ou une
+    CHECKLIST, eux, se redeposent librement : documenter une version livree
+    est un usage normal) ;
   - le dossier de version recoit un README.md minimal s'il n'en a pas ;
   - rien n'est jamais ecrit dans db.json ni dans .corbeille/.
 `
@@ -125,7 +129,20 @@ async function archiver(dossierProjet, version, pourquoi) {
   const mois = moisCourant()
   const cible = path.join(dossierProjet, 'archive', mois)
   await fsp.mkdir(cible, { recursive: true })
-  await fsp.rename(path.join(dossierProjet, version), path.join(cible, version))
+  // Deux binaires DIFFERENTS peuvent porter le meme numero dans le meme mois :
+  // une version remise a zero, ou renumerotee (1.0.1 est redevenue 1.0.0 le
+  // 27/08). Si la place est prise, on refuse et on nomme le dossier de repli
+  // plutot que de laisser rename() echouer sur un message d systeme illisible.
+  const destination = path.join(cible, version)
+  if (fs.existsSync(destination)) {
+    const repli = `${version}-publiee-${jourCourant().slice(8)}-${jourCourant().slice(5, 7)}`
+    throw new Error(
+      `archive/${mois}/${version}/ existe deja et contient un AUTRE binaire du meme numero. ` +
+        `Descends la version publiee a la main dans archive/${mois}/${repli}/, ajoute la raison ` +
+        `au NOTE.md du mois, puis relance SANS --archiver.`,
+    )
+  }
+  await fsp.rename(path.join(dossierProjet, version), destination)
 
   const note = path.join(cible, 'NOTE.md')
   const ligne = `- **${version}** archivee le ${jourCourant()} — ${pourquoi}\n`
@@ -189,6 +206,38 @@ async function main() {
   const dossierProjet = path.join(racine, projet)
   const dossierVersion = path.join(dossierProjet, version)
   const estTest = version.includes('-')
+
+  // Un binaire publie ne disparait JAMAIS sans laisser de trace.
+  //
+  // Le 27/08 la promotion de Chantiers 1.0.0 a ecrase le binaire publie du
+  // 24/08 : le dossier portait deja le meme numero, donc l invariant ci-dessous
+  // ne voyait aucune "autre" version publiee a descendre, --archiver restait
+  // sans effet, et la copie ecrasait simplement les fichiers en place. Aucune
+  // erreur, aucune ligne de NOTE.md. L APK n a pu etre sauve que parce qu EAS
+  // gardait encore l artefact du build ; un installeur Electron est construit
+  // localement et n aurait ete rattrape par rien.
+  //
+  // On ne refuse QUE l ecrasement d un artefact. Redeposer un README ou une
+  // CHECKLIST sur une version publiee reste permis : documenter une version
+  // deja livree est un usage normal, revendique par --aide.
+  if (!estTest && fs.existsSync(dossierVersion)) {
+    const ecrases = args.fichier
+      .map((f) => path.basename(f))
+      .filter((nom) => fs.existsSync(path.join(dossierVersion, nom)))
+    if (ecrases.length > 0 && !args.archiver) {
+      throw new Error(
+        `${projet}/${version} est PUBLIEE et contient deja ${ecrases.join(', ')}. ` +
+          `Deposer par-dessus detruirait le binaire publie sans trace. Relancer avec ` +
+          `--archiver --pourquoi "<raison>" pour le descendre dans archive/ d abord, ` +
+          `ou deposer un build de test (${version}-T<n>).`,
+      )
+    }
+    if (ecrases.length > 0) {
+      if (!args.pourquoi) throw new Error('--archiver exige --pourquoi "<raison>" : un NOTE.md sans raison ne sert a rien.')
+      const vers = await archiver(dossierProjet, version, args.pourquoi)
+      console.log(`archive : ${version} -> ${vers}`)
+    }
+  }
 
   // Invariant : au plus une version publiee hors archive/.
   if (!estTest) {
