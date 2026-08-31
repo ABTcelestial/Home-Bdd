@@ -224,9 +224,18 @@ export function toggleCase(source: string, index: number): string | null {
   const lines = source.split('\n')
   const ligne = lines[index]
   if (ligne === undefined) return null
-  const match = /^(\s*[-*+]\s+\[)( |x|X)(\].*)$/.exec(ligne)
+
+  // Fichier en CRLF : la ligne se termine par un \r que `.` et `$` ne
+  // franchissent pas en JavaScript. Sans ce detachement, la regex ne reconnait
+  // plus la case et le clic est ignore en silence — alors que le rendu, lui,
+  // decoupe sur /\r?\n/ et affiche bien la case. On le remet a l'identique
+  // apres coup : le fichier garde ses fins de ligne d'origine.
+  const finDeLigne = ligne.endsWith('\r') ? '\r' : ''
+  const nue = finDeLigne ? ligne.slice(0, -1) : ligne
+
+  const match = /^(\s*[-*+]\s+\[)( |x|X)(\].*)$/.exec(nue)
   if (!match) return null
   const coche = match[2].toLowerCase() === 'x'
-  lines[index] = `${match[1]}${coche ? ' ' : 'x'}${match[3]}`
+  lines[index] = `${match[1]}${coche ? ' ' : 'x'}${match[3]}${finDeLigne}`
   return lines.join('\n')
 }

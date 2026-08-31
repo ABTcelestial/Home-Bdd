@@ -14,20 +14,25 @@ export class ApiError extends Error {
 }
 
 async function lire<T>(res: Response): Promise<T> {
-  if (res.status === 401) {
-    // Session expiree : retour au login en gardant la page demandee.
-    if (typeof window !== 'undefined') {
-      const suite = window.location.pathname + window.location.search
-      window.location.href = `/login?suite=${encodeURIComponent(suite)}`
-    }
-    throw new ApiError('Session expiree.', 401)
-  }
-
   let donnees: Record<string, unknown> = {}
   try {
     donnees = (await res.json()) as Record<string, unknown>
   } catch {
     if (!res.ok) throw new ApiError(`Erreur serveur (${res.status}).`, res.status)
+  }
+
+  // Session expiree : retour au login en gardant la page demandee.
+  //
+  // Le drapeau `auth: false` est pose par le middleware, et par lui seul. Sans
+  // cette condition, le 401 legitime de l'ecran de connexion ("mot de passe
+  // incorrect") declenchait le meme rechargement : la page revenait a zero sans
+  // afficher la moindre erreur, et le bouton avait l'air casse.
+  if (res.status === 401 && donnees.auth === false) {
+    if (typeof window !== 'undefined') {
+      const suite = window.location.pathname + window.location.search
+      window.location.href = `/login?suite=${encodeURIComponent(suite)}`
+    }
+    throw new ApiError('Session expiree.', 401)
   }
 
   if (!res.ok || donnees.ok === false) {
@@ -56,6 +61,37 @@ export function messageErreur(err: unknown): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message
   return 'Erreur inconnue.'
+}
+
+/**
+ * Copie dans le presse-papiers. L'API moderne n'existe qu'en contexte securise :
+ * elle marche en http://localhost mais pas en http://celestial-hub:3000, d'ou
+ * le repli par un champ temporaire.
+ */
+export async function copierTexte(texte: string): Promise<boolean> {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(texte)
+      return true
+    }
+  } catch {
+    /* refus du navigateur : on tente le repli */
+  }
+  try {
+    const zone = document.createElement('textarea')
+    zone.value = texte
+    zone.setAttribute('readonly', '')
+    zone.style.position = 'fixed'
+    zone.style.top = '-1000px'
+    zone.style.opacity = '0'
+    document.body.appendChild(zone)
+    zone.select()
+    const copie = document.execCommand('copy')
+    document.body.removeChild(zone)
+    return copie
+  } catch {
+    return false
+  }
 }
 
 /** URL de telechargement d'un fichier. */

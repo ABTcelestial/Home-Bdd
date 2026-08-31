@@ -2,7 +2,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { getRoot } from './config'
-import { DB_FILE, TRASH_DIR } from './paths'
+import { DB_FILE, GUIDE_FILE, TRASH_DIR } from './paths'
 import { extOf } from './filetypes'
 import type { FsNode } from './types'
 
@@ -55,7 +55,7 @@ async function walk(
     const name = entry.name
     const rel = relDir ? `${relDir}/${name}` : name
     // Elements internes du Hub, invisibles dans l'arbre.
-    if (!relDir && (name === TRASH_DIR || name === DB_FILE)) continue
+    if (!relDir && (name === TRASH_DIR || name === DB_FILE || name === GUIDE_FILE)) continue
     // Les liens symboliques sont ignores : ils peuvent boucler ou sortir de la racine.
     if (entry.isSymbolicLink()) continue
 
@@ -102,6 +102,15 @@ async function doScan(root: string): Promise<ScanResult> {
   const hash = crypto.createHash('sha1')
   const totals = { dossiers: 0, fichiers: 0, taille: 0 }
   const tree = await walk(path.resolve(root), '', hash, totals, { left: MAX_ENTRIES }, 0)
+  // Le fichier de guidage est masque dans l'arbre, mais il doit compter dans la
+  // signature : sans ca, une marque posee par Claude Code n'arriverait au
+  // navigateur qu'au prochain changement de fichier, pas tout de suite.
+  try {
+    const stat = await fsp.stat(path.join(path.resolve(root), GUIDE_FILE))
+    hash.update(`g:${stat.size}:${Math.round(stat.mtimeMs)}\n`)
+  } catch {
+    hash.update('g:absent\n')
+  }
   return { tree, signature: hash.digest('hex'), totals, scannedAt: Date.now() }
 }
 

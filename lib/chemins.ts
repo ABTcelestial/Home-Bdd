@@ -8,6 +8,12 @@
 
 export const TRASH_DIR = '.corbeille'
 export const DB_FILE = 'db.json'
+/**
+ * Fichier de pilotage ecrit par Claude Code (ou n'importe quel script) pour
+ * faire briller des elements et y accrocher une bulle. Le Hub ne fait que le
+ * lire : c'est l'outil exterieur qui en est proprietaire.
+ */
+export const GUIDE_FILE = '.hub-guide.json'
 
 /** Caracteres interdits par Windows dans un nom de fichier. */
 // eslint-disable-next-line no-control-regex

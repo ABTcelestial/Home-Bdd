@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   Database,
   Download,
+  FolderOpen,
   FolderPlus,
   LogOut,
   MoreHorizontal,
@@ -23,6 +24,8 @@ import {
   AlertTriangle,
   WifiOff,
   StickyNote,
+  Sparkles,
+  Check,
 } from 'lucide-react'
 import { useArbre } from './useArbre'
 import { Arbre } from './Arbre'
@@ -32,11 +35,11 @@ import { Editeur } from './Editeur'
 import { Modale } from './Modale'
 import { SelecteurDossier } from './SelecteurDossier'
 import { useToasts } from './Toasts'
-import { apiPost, messageErreur, televerser, urlTelechargement } from '@/lib/client'
+import { apiPost, copierTexte, messageErreur, televerser, urlTelechargement } from '@/lib/client'
 import { fichiersChoisis, fichiersDeposes, type FichierDepose } from '@/lib/depot'
 import { baseName, joinRel, libelleDossier, parentOf, validateName } from '@/lib/chemins'
 import { formatSize, maybeText, extOf } from '@/lib/filetypes'
-import type { FsNode } from '@/lib/types'
+import type { FsNode, MarqueGuide } from '@/lib/types'
 
 type Dialogue =
   | { type: 'menu'; noeud: FsNode }
@@ -45,6 +48,7 @@ type Dialogue =
   | { type: 'supprimer'; chemins: string[] }
   | { type: 'deplacer'; chemins: string[] }
   | { type: 'plus' }
+  | { type: 'guide' }
 
 type Transfert = {
   id: number
@@ -91,6 +95,15 @@ export function Hub() {
 
   const arbre = donnees?.tree ?? []
   const notes = donnees?.notes ?? {}
+
+  // Les marques deja acquittees ne servent plus a rien cote affichage : on ne
+  // garde que ce qu'il reste a voir, dans l'ordre du fichier de guidage.
+  const aFinir = useMemo(() => (donnees?.guide ?? []).filter((m) => !m.vu), [donnees])
+  const marques = useMemo(() => {
+    const carte = new Map<string, MarqueGuide>()
+    for (const marque of aFinir) carte.set(marque.chemin, marque)
+    return carte
+  }, [aFinir])
 
   const plat = useMemo(() => aplatir(arbre), [arbre])
   const parChemin = useMemo(() => {
@@ -376,6 +389,51 @@ export function Hub() {
     [recharger, toasts],
   )
 
+  /**
+   * Ouvre l'element dans l'Explorateur du PC serveur. Quand le Hub tourne en
+   * service Windows il ne peut afficher aucune fenetre : on copie alors le
+   * chemin pour que le coller dans l'Explorateur reste a un raccourci pres.
+   */
+  const ouvrirEmplacement = useCallback(
+    async (chemin: string) => {
+      try {
+        const rep = await apiPost<{ ouvert: boolean; chemin: string; raison?: string }>(
+          '/api/ouvrir-emplacement',
+          { chemin },
+        )
+        if (rep.ouvert) {
+          toasts.succes('Explorateur ouvert sur le PC serveur.')
+          return
+        }
+        const cause =
+          rep.raison === 'service'
+            ? 'Le Hub tourne en service Windows : il ne peut pas ouvrir de fenetre sur ta session.'
+            : "L'Explorateur n'est disponible que sur un serveur Windows."
+        if (await copierTexte(rep.chemin)) {
+          toasts.succes(`${cause} Chemin copie : ${rep.chemin}`)
+        } else {
+          toasts.erreur(`${cause} Chemin : ${rep.chemin}`)
+        }
+      } catch (err) {
+        toasts.erreur(messageErreur(err))
+      }
+    },
+    [toasts],
+  )
+
+  /** Acquitte une marque de guidage : elle s'eteint jusqu'a ce que Claude la reecrive. */
+  const marquerVu = useCallback(
+    async (marque: MarqueGuide) => {
+      try {
+        await apiPost('/api/guide/vu', { chemin: marque.chemin, signature: marque.signature })
+        await recharger()
+      } catch (err) {
+        toasts.erreur(messageErreur(err))
+      }
+    },
+    [recharger, toasts],
+  )
+
   const deconnexion = useCallback(async () => {
     await apiPost('/api/auth/logout').catch(() => undefined)
     window.location.href = '/login'
@@ -400,6 +458,19 @@ export function Hub() {
         </div>
 
         <div className="entete-actions">
+          {aFinir.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-guide"
+              onClick={() => setDialogue({ type: 'guide' })}
+              title="Elements marques par Claude Code"
+            >
+              <Sparkles size={15} aria-hidden />
+              {aFinir.length}
+              <span className="libelle-btn">a finir</span>
+            </button>
+          ) : null}
+
           {!connecte && !chargement ? (
             <span className="btn-icone" title="Temps reel indisponible : mise a jour periodique" aria-label="Hors ligne">
               <WifiOff size={16} />
@@ -497,6 +568,15 @@ export function Hub() {
         </div>
       ) : null}
 
+      {/* Le fichier de guidage est ecrit par un outil exterieur : s'il est
+          casse, on le dit, sinon les marques disparaitraient sans explication. */}
+      {donnees?.guideErreur ? (
+        <div className="alerte alerte-info" style={{ margin: '0 12px 12px' }}>
+          <AlertTriangle size={16} aria-hidden />
+          <span>{donnees.guideErreur}</span>
+        </div>
+      ) : null}
+
       <div className={`corps ${detailOuvert ? 'avec-detail' : ''}`}>
         <section className="volet" data-actif={vueMobile === 'liste'} aria-label="Recherche">
           {chargement && !donnees ? (
@@ -509,6 +589,7 @@ export function Hub() {
             <ListePlate
               elements={plat}
               notes={notes}
+              marques={marques}
               recherche={recherche}
               onRecherche={setRecherche}
               filtre={filtre}
@@ -535,6 +616,7 @@ export function Hub() {
                 noeuds={arbre}
                 racine={donnees?.racine ?? ''}
                 notes={notes}
+                marques={marques}
                 ouverts={ouverts}
                 onBasculer={basculerDossier}
                 cheminActif={cheminActif}
@@ -563,9 +645,11 @@ export function Hub() {
             <PanneauDetail
               noeud={noeudActif}
               note={notes[noeudActif.path] ?? ''}
+              isServer={Boolean(donnees?.isServer)}
               onFermer={() => setCheminActif(null)}
               onTelecharger={() => telecharger(noeudActif)}
               onOuvrir={() => setEditeur(noeudActif.path)}
+              onOuvrirEmplacement={() => void ouvrirEmplacement(noeudActif.path)}
               onRenommer={() => setDialogue({ type: 'renommer', noeud: noeudActif })}
               onDeplacer={() => setDialogue({ type: 'deplacer', chemins: [noeudActif.path] })}
               onSupprimer={() => setDialogue({ type: 'supprimer', chemins: [noeudActif.path] })}
@@ -722,12 +806,15 @@ export function Hub() {
           dossierActif={dossierActif}
           occupe={occupe}
           isServer={Boolean(donnees?.isServer)}
+          aFinir={aFinir}
+          onMarquerVu={marquerVu}
           onFermer={() => setDialogue(null)}
           onCreerDossier={creerDossier}
           onRenommer={renommer}
           onDeplacer={deplacer}
           onSupprimer={supprimer}
           onTelecharger={telecharger}
+          onOuvrirEmplacement={(chemin) => void ouvrirEmplacement(chemin)}
           onEditer={(chemin) => setEditeur(chemin)}
           onDetail={(noeud) => ouvrirElement(noeud)}
           onTeleverser={() => champFichiers.current?.click()}
@@ -752,12 +839,15 @@ function Dialogues(props: {
   dossierActif: string
   occupe: boolean
   isServer: boolean
+  aFinir: MarqueGuide[]
+  onMarquerVu: (marque: MarqueGuide) => Promise<void>
   onFermer: () => void
   onCreerDossier: (parent: string, nom: string) => Promise<boolean>
   onRenommer: (chemin: string, nom: string) => Promise<boolean>
   onDeplacer: (chemins: string[], destination: string) => Promise<boolean>
   onSupprimer: (chemins: string[]) => Promise<boolean>
   onTelecharger: (noeud: FsNode) => void
+  onOuvrirEmplacement: (chemin: string) => void
   onEditer: (chemin: string) => void
   onDetail: (noeud: FsNode) => void
   onTeleverser: () => void
@@ -951,6 +1041,18 @@ function Dialogues(props: {
               <FilePen size={15} /> Ouvrir
             </button>
           ) : null}
+          {props.isServer ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                props.onOuvrirEmplacement(noeud.path)
+                props.onFermer()
+              }}
+            >
+              <FolderOpen size={15} /> Ouvrir l&apos;emplacement
+            </button>
+          ) : null}
           {!estFichier ? (
             <button
               type="button"
@@ -983,6 +1085,63 @@ function Dialogues(props: {
             {formatSize(noeud.size)} - modifie le {new Date(noeud.mtime).toLocaleDateString('fr-FR')}
           </p>
         ) : null}
+      </Modale>
+    )
+  }
+
+  if (dialogue.type === 'guide') {
+    return (
+      <Modale
+        titre="A finir"
+        icone={<Sparkles size={17} aria-hidden />}
+        onFermer={props.onFermer}
+      >
+        {props.aFinir.length === 0 ? (
+          <p className="champ-aide">Rien en attente.</p>
+        ) : (
+          <div className="guide-liste">
+            {props.aFinir.map((marque) => {
+              const noeud = props.parChemin.get(marque.chemin)
+              return (
+                <div className={`guide-entree guide-${marque.ton}`} key={marque.chemin}>
+                  <div className="guide-corps">
+                    <div className="guide-nom">
+                      {noeud ? noeud.name : baseName(marque.chemin) || marque.chemin}
+                      {!noeud ? <span className="guide-absent">introuvable</span> : null}
+                    </div>
+                    <div className="ligne-sous">{marque.chemin}</div>
+                    {marque.bulle ? <div className="guide-texte">{marque.bulle}</div> : null}
+                  </div>
+                  <div className="guide-actions">
+                    {noeud ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          props.onDetail(noeud)
+                          props.onFermer()
+                        }}
+                      >
+                        Aller voir
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-principal"
+                      onClick={() => void props.onMarquerVu(marque)}
+                    >
+                      <Check size={15} /> Fait
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p className="champ-aide" style={{ marginTop: 10 }}>
+          Ces marques viennent du fichier .hub-guide.json depose a la racine du Hub.
+          Une marque reecrite par Claude Code se rallume toute seule.
+        </p>
       </Modale>
     )
   }

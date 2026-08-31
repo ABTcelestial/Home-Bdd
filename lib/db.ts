@@ -21,10 +21,16 @@ export type Db = {
   racine: string
   notes: Record<string, string>
   corbeille: TrashEntry[]
+  /**
+   * Marques de guidage acquittees : chemin -> empreinte vue. On garde
+   * l'empreinte et pas un simple booleen, pour qu'une marque reecrite par
+   * Claude Code redevienne a voir sans rien faire de special.
+   */
+  guideVus: Record<string, string>
 }
 
 function emptyDb(root: string): Db {
-  return { racine: root, notes: {}, corbeille: [] }
+  return { racine: root, notes: {}, corbeille: [], guideVus: {} }
 }
 
 function dbPath(root: string): string {
@@ -43,6 +49,7 @@ export async function readDb(): Promise<Db> {
       racine: root,
       notes: parsed.notes && typeof parsed.notes === 'object' ? parsed.notes : {},
       corbeille: Array.isArray(parsed.corbeille) ? parsed.corbeille : [],
+      guideVus: parsed.guideVus && typeof parsed.guideVus === 'object' ? parsed.guideVus : {},
     }
   } catch {
     return emptyDb(root)

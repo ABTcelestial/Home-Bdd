@@ -3,13 +3,16 @@
 import { useState } from 'react'
 import { ChevronRight, Database, MoreVertical, StickyNote, Check } from 'lucide-react'
 import { IconeElement } from './Icones'
+import { Bulle } from './Bulle'
 import { formatSize } from '@/lib/filetypes'
-import type { FsNode } from '@/lib/types'
+import type { FsNode, MarqueGuide } from '@/lib/types'
 
 export type ArbreProps = {
   noeuds: FsNode[]
   racine: string
   notes: Record<string, string>
+  /** Marques de guidage encore a voir, par chemin. */
+  marques: Map<string, MarqueGuide>
   ouverts: Set<string>
   onBasculer: (chemin: string) => void
   cheminActif: string | null
@@ -122,6 +125,7 @@ function Noeud(
   const actif = props.cheminActif === noeud.path
   const selectionne = props.selection.has(noeud.path)
   const note = props.notes[noeud.path]
+  const marque = props.marques.get(noeud.path)
   const depot = estDossier ? props.propsDepot(noeud.path) : {}
 
   return (
@@ -129,7 +133,7 @@ function Noeud(
       <div
         className={`ligne ${props.surligne === noeud.path ? 'surlignee' : ''} ${
           props.cible === noeud.path ? 'zone-depot' : ''
-        }`}
+        } ${marque?.brille ? 'brille' : ''}`}
         aria-selected={actif || (estDossier && props.dossierActif === noeud.path)}
         {...depot}
       >
@@ -186,6 +190,7 @@ function Noeud(
           <span className="ligne-texte">
             <span className="ligne-nom">{noeud.name}</span>
           </span>
+          {marque ? <Bulle marque={marque} /> : null}
           {note ? <StickyNote size={13} color="#b45309" aria-label="Contient une note" /> : null}
           {estDossier ? (
             <span className="compteur">{noeud.count ?? 0}</span>
@@ -214,8 +219,12 @@ function Noeud(
       ) : null}
       {estDossier && ouvert && (!noeud.children || noeud.children.length === 0) ? (
         <div className="branche">
-          <div className="ligne" style={{ color: 'var(--texte-faible)', fontSize: 12.5 }}>
-            Dossier vide
+          {/* Enveloppe .noeud : le placeholder recoit le meme coude que les
+              vrais enfants, sinon le trait du parent s'arrete dans le vide. */}
+          <div className="noeud">
+            <div className="ligne" style={{ color: 'var(--texte-faible)', fontSize: 12.5 }}>
+              Dossier vide
+            </div>
           </div>
         </div>
       ) : null}

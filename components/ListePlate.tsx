@@ -3,8 +3,9 @@
 import { useMemo } from 'react'
 import { Search, X, Files, Folder, FileText, Check, StickyNote } from 'lucide-react'
 import { IconeElement } from './Icones'
+import { Bulle } from './Bulle'
 import { formatSize } from '@/lib/filetypes'
-import type { FsNode } from '@/lib/types'
+import type { FsNode, MarqueGuide } from '@/lib/types'
 
 export type Filtre = 'tout' | 'dossiers' | 'fichiers'
 
@@ -17,6 +18,7 @@ const MAX_AFFICHE = 400
 export function ListePlate({
   elements,
   notes,
+  marques,
   recherche,
   onRecherche,
   filtre,
@@ -29,6 +31,8 @@ export function ListePlate({
 }: {
   elements: FsNode[]
   notes: Record<string, string>
+  /** Marques de guidage encore a voir, par chemin. */
+  marques: Map<string, MarqueGuide>
   recherche: string
   onRecherche: (valeur: string) => void
   filtre: Filtre
@@ -101,7 +105,11 @@ export function ListePlate({
         ) : (
           <div style={{ padding: '6px 6px 0' }}>
             {affiches.map((noeud) => (
-              <div key={noeud.path} className="ligne" aria-selected={cheminActif === noeud.path}>
+              <div
+                key={noeud.path}
+                className={`ligne ${marques.get(noeud.path)?.brille ? 'brille' : ''}`}
+                aria-selected={cheminActif === noeud.path}
+              >
                 <button
                   type="button"
                   className="case"
@@ -128,6 +136,7 @@ export function ListePlate({
                     <span className="ligne-nom">{noeud.name}</span>
                     <span className="ligne-sous">{noeud.path}</span>
                   </span>
+                  {marques.has(noeud.path) ? <Bulle marque={marques.get(noeud.path)!} /> : null}
                   {notes[noeud.path] ? <StickyNote size={13} color="#b45309" aria-label="Note" /> : null}
                   {noeud.type === 'file' ? (
                     <span className="ligne-meta">{formatSize(noeud.size)}</span>

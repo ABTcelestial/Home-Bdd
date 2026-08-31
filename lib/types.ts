@@ -17,6 +17,25 @@ export type FsNode = {
   count?: number
 }
 
+/** Couleur d'une bulle de guidage : simple information, chose a faire, alerte. */
+export type TonGuide = 'info' | 'action' | 'alerte'
+
+/**
+ * Marque posee sur un element depuis `.hub-guide.json` (ecrit par Claude Code
+ * ou par un script de build). Le Hub la lit, ne l'ecrit jamais.
+ */
+export type MarqueGuide = {
+  /** Chemin relatif a la racine, normalise en slashs. */
+  chemin: string
+  brille: boolean
+  bulle: string
+  ton: TonGuide
+  /** Empreinte du contenu : si le texte change, la marque redevient a voir. */
+  signature: string
+  /** Ryan a clique "fait" sur cette version de la marque. */
+  vu: boolean
+}
+
 export type TreePayload = {
   /** Chemin absolu de la racine configuree (affiche a cote de l'icone BDD). */
   racine: string
@@ -25,6 +44,10 @@ export type TreePayload = {
   notes: Record<string, string>
   /** La requete vient-elle du PC serveur (localhost) ? */
   isServer: boolean
+  /** Marques de guidage, dans l'ordre du fichier .hub-guide.json. */
+  guide: MarqueGuide[]
+  /** Le fichier de guidage existe mais est illisible : on le dit plutot que de l'ignorer. */
+  guideErreur?: string
   totals: { dossiers: number; fichiers: number; taille: number }
   /** La racine existe-t-elle sur le disque ? */
   ok: boolean
