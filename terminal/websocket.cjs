@@ -164,6 +164,12 @@ function creerServeur() {
  * `npm run dev` cesse de fonctionner sans le moindre message d'erreur.
  */
 function brancher() {
+  // Instancie le gestionnaire TOUT DE SUITE, et pas a la premiere socket.
+  // Sinon `globalThis.__hubTerminal` n'existe pas encore quand les routes de
+  // Next demandent l'etat du terminal, et le Hub annonce a tort qu'il n'est
+  // pas charge tant que personne ne s'est connecte.
+  gestionnaire()
+
   const { wss, battement } = creerServeur()
 
   function gererUpgrade(req, socket, head) {
