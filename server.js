@@ -60,6 +60,23 @@ if (!dev && !process.env.__NEXT_PRIVATE_STANDALONE_CONFIG) {
 const app = next({ dev, hostname: '0.0.0.0', port })
 const handle = app.getRequestHandler()
 
+/**
+ * Terminal LAN (PRD 8, 17, 18).
+ *
+ * Le module est charge ici, mais son echec ne doit JAMAIS empecher le Hub de
+ * demarrer : un paquet portable fabrique sans le module natif doit continuer a
+ * servir les fichiers, en annoncant simplement que le terminal est indisponible.
+ */
+const terminalActif = process.env.HUB_TERMINAL !== '0'
+let terminal = null
+if (terminalActif) {
+  try {
+    terminal = require('./terminal/websocket.cjs').brancher()
+  } catch (err) {
+    console.error('[hub] Terminal LAN indisponible (le reste du Hub fonctionne) :', err.message)
+  }
+}
+
 /** Normalise ::ffff:127.0.0.1 -> 127.0.0.1 */
 function normalizeAddr(addr) {
   if (!addr) return ''
@@ -96,12 +113,76 @@ app.prepare().then(() => {
   server.keepAliveTimeout = 120_000
   server.timeout = 0
 
+  /**
+   * Une seule voie d'`upgrade` pour deux locataires.
+   *
+   * Next en a besoin pour son rechargement a chaud en developpement. Si on lui
+   * prend l'evenement sans le lui rendre, `npm run dev` cesse de se recharger
+   * SANS le moindre message d'erreur - la panne la plus penible a diagnostiquer.
+   * Le terminal prend donc uniquement son chemin, et rend tout le reste.
+   */
+  const upgradeNext = app.getUpgradeHandler()
+  server.on('upgrade', (req, socket, head) => {
+    try {
+      if (terminal && terminal.gererUpgrade(req, socket, head)) return
+    } catch (err) {
+      console.error('[hub] upgrade terminal', err)
+      socket.destroy()
+      return
+    }
+    Promise.resolve(upgradeNext(req, socket, head)).catch((err) => {
+      console.error('[hub] upgrade', err)
+      socket.destroy()
+    })
+  })
+
+  /**
+   * Arret propre (PRD 19). C'est le seul moment ou l'on tue les sessions : une
+   * socket qui se ferme n'en a jamais le droit. Sans ce passage, chaque shell
+   * ouvert depuis le telephone survivrait au Hub en processus orphelin.
+   */
+  let arretEnCours = false
+  function arreter(cause) {
+    if (arretEnCours) return
+    arretEnCours = true
+    console.log(`\n  Celestial Hub s'arrete (${cause})`)
+    if (terminal) {
+      try {
+        terminal.fermer()
+      } catch (err) {
+        console.error('[hub] fermeture des sockets terminal', err)
+      }
+    }
+    try {
+      require('./terminal/gestionnaire.cjs').gestionnaire().arreter()
+    } catch {
+      // Le terminal n'a jamais ete charge : rien a arreter.
+    }
+    server.close(() => process.exit(0))
+    // Un transfert de 5 Go en cours ne doit pas retenir l'arret indefiniment.
+    setTimeout(() => process.exit(0), 3000).unref()
+  }
+  process.on('SIGINT', () => arreter('Ctrl+C'))
+  process.on('SIGTERM', () => arreter('SIGTERM'))
+  // Filet : couvre les sorties normales que les signaux ci-dessus ne voient pas
+  // (fin de script, process.exit ailleurs). Il ne peut rien contre un arret
+  // force du gestionnaire des taches - la limite est documentee dans le README.
+  process.on('exit', () => {
+    try {
+      require('./terminal/gestionnaire.cjs').gestionnaire().arreter()
+    } catch {
+      // Terminal jamais charge, ou deja arrete.
+    }
+  })
+
   server.listen(port, hostname, () => {
     const ips = localAddresses()
     console.log('')
     console.log('  Celestial Hub demarre')
     console.log(`  Local    : http://localhost:${port}`)
     for (const ip of ips) console.log(`  Reseau   : http://${ip}:${port}`)
+    if (terminal) console.log(`  Terminal : ws://<adresse>:${port}${terminal.CHEMIN}`)
+    else console.log('  Terminal : desactive')
     console.log('')
   })
 })

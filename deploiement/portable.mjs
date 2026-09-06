@@ -51,6 +51,57 @@ async function copier(source, cible, exclus = []) {
   }
 }
 
+/**
+ * Copie recursive filtree : `garder(cheminRelatif, entree)` decide.
+ */
+async function copierFiltre(source, cible, garder, base = '') {
+  await fsp.mkdir(cible, { recursive: true })
+  for (const entree of await fsp.readdir(source, { withFileTypes: true })) {
+    const relatif = base ? `${base}/${entree.name}` : entree.name
+    if (!garder(relatif, entree)) continue
+    const de = path.join(source, entree.name)
+    const vers = path.join(cible, entree.name)
+    if (entree.isDirectory()) await copierFiltre(de, vers, garder, relatif)
+    else if (entree.isFile()) await fsp.copyFile(de, vers)
+  }
+}
+
+/**
+ * Modules dont le SERVEUR a besoin, et que Next ne copie jamais.
+ *
+ * La sortie autonome de Next ne trace que ce qu'importe l'application. Or
+ * `ws` et `node-pty` sont requis par server.js, qui n'est pas trace du tout :
+ * sans cette copie explicite, le Hub portable demarre normalement, sert les
+ * fichiers... et annonce que le Terminal LAN est indisponible. La panne est
+ * silencieuse a la fabrication, d'ou l'assertion qui suit la copie.
+ */
+const MODULES_SERVEUR = ['ws', 'node-pty']
+
+/** Plateforme de la machine qui fabrique le paquet. */
+const PLATEFORME = `${process.platform}-${process.arch}`
+
+/**
+ * node-pty embarque les binaires de TOUTES les plateformes (58 Mo). Un paquet
+ * Windows n'a que faire de macOS et de Linux ; on ne garde que la sienne, plus
+ * le code JavaScript. Les sources C++ et les dependances de compilation ne
+ * servent qu'a rebatir le module, jamais a l'executer.
+ */
+function garderPourNodePty(relatif, entree) {
+  const premier = relatif.split('/')[0]
+  if (['src', 'deps', 'third_party', 'typings', 'scripts'].includes(premier)) return false
+  if (relatif.endsWith('.map') || relatif.endsWith('.test.js')) return false
+  // Les .pdb sont les symboles de debogage des binaires natifs : 28,5 Mo pour
+  // win32-x64, dont l'execution n'a aucun besoin. Mesure : 30,9 -> 2,4 Mo.
+  if (relatif.endsWith('.pdb')) return false
+  if (premier === 'prebuilds') {
+    const morceaux = relatif.split('/')
+    // On garde le dossier `prebuilds` lui-meme, puis uniquement notre cible.
+    if (morceaux.length >= 2 && morceaux[1] !== PLATEFORME) return false
+  }
+  if (entree.isFile() && premier === 'binding.gyp') return false
+  return true
+}
+
 async function taille(dossier) {
   let total = 0
   for (const e of await fsp.readdir(dossier, { withFileTypes: true })) {
@@ -85,13 +136,57 @@ async function main() {
   const secret = path.join(app, 'data', 'config.json')
   if (fs.existsSync(secret)) throw new Error('ARRET : un config.json local a ete copie dans le paquet.')
 
-  etape(3, 'Embarquement du moteur Node')
+  etape(3, 'Modules du serveur (Terminal LAN)')
+
+  // Le module du terminal appartient au serveur maison, que Next ne trace pas
+  // davantage que server.js lui-meme : sans cette copie, le paquet demarre et
+  // annonce simplement "Terminal : desactive".
+  await copierFiltre(path.join(PROJET, 'terminal'), path.join(app, 'terminal'), () => true)
+  console.log('    terminal/')
+
+  for (const nom of MODULES_SERVEUR) {
+    const source = path.join(PROJET, 'node_modules', nom)
+    if (!fs.existsSync(source)) throw new Error(`Module introuvable : ${nom}. Lancez npm install.`)
+    const cible = path.join(app, 'node_modules', nom)
+    if (nom === 'node-pty') await copierFiltre(source, cible, garderPourNodePty)
+    else await copierFiltre(source, cible, () => true)
+    console.log(`    ${nom} (${((await taille(cible)) / 1024 / 1024).toFixed(1)} Mo)`)
+  }
+
+  /**
+   * On ne verifie pas des noms de fichiers : on CHARGE les modules depuis le
+   * paquet, avec le meme moteur Node que celui qu'on y embarque.
+   *
+   * Verifier l'existence de pty.node n'aurait rien vu la premiere fois : le
+   * binaire etait bien la, c'est le dossier terminal/ qui manquait. Un vrai
+   * chargement attrape les deux, plus le cas d'un binaire natif incompatible.
+   */
+  const sonde = [
+    "const w = require('./terminal/websocket.cjs')",
+    "if (typeof w.brancher !== 'function') throw new Error('websocket.cjs incomplet')",
+    "const pty = require('node-pty')",
+    "if (typeof pty.spawn !== 'function') throw new Error('node-pty incomplet')",
+    "require('ws')",
+    "console.log('paquet verifie')",
+  ].join('; ')
+  try {
+    const sortie = execFileSync(process.execPath, ['-e', sonde], { cwd: app, encoding: 'utf8' })
+    console.log(`    ${sortie.trim()}`)
+  } catch (err) {
+    const detail = (err.stderr || err.message || '').toString().split('\n')[0]
+    throw new Error(
+      `ARRET : le Terminal LAN ne se charge pas depuis le paquet. ${detail}\n` +
+        '       Le Hub demarrerait en annoncant "Terminal : desactive".',
+    )
+  }
+
+  etape(4, 'Embarquement du moteur Node')
   const node = process.execPath
   await fsp.mkdir(path.join(SORTIE, 'runtime'), { recursive: true })
   await fsp.copyFile(node, path.join(SORTIE, 'runtime', 'node.exe'))
   console.log(`    ${node} (${(fs.statSync(node).size / 1024 / 1024).toFixed(0)} Mo)`)
 
-  etape(4, 'Compilation du lanceur')
+  etape(5, 'Compilation du lanceur')
   if (!fs.existsSync(CSC)) throw new Error(`Compilateur C# introuvable : ${CSC}`)
   execFileSync(CSC, [
     '/nologo',
@@ -103,7 +198,7 @@ async function main() {
   ])
   console.log('    Celestial Hub.exe')
 
-  etape(5, 'Mode d\'emploi')
+  etape(6, 'Mode d\'emploi')
   await fsp.writeFile(
     path.join(SORTIE, 'LISEZ-MOI.txt'),
     [

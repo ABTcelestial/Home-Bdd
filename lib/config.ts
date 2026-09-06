@@ -17,6 +17,14 @@ export type HubConfig = {
   racine: string
   passwordHash: string | null
   secret: string
+  /**
+   * PIN du Terminal LAN, distinct du mot de passe du Hub.
+   *
+   * Le mot de passe partage ouvre des fichiers ; le terminal ouvre un shell
+   * complet sur le PC. Ce n'est pas le meme risque, ce n'est donc pas le meme
+   * secret. Tant que ce champ est nul, le terminal reste inactif.
+   */
+  terminalPinHash: string | null
 }
 
 const DATA_DIR = process.env.HUB_DATA_DIR || path.join(process.cwd(), 'data')
@@ -45,6 +53,7 @@ export function getConfig(): HubConfig {
     racine: raw.racine || defaultRoot(),
     passwordHash: raw.passwordHash || null,
     secret: raw.secret || process.env.HUB_SECRET || crypto.randomBytes(32).toString('hex'),
+    terminalPinHash: raw.terminalPinHash || null,
   }
   // Premier demarrage : on fige le secret pour que les sessions survivent aux
   // redemarrages du service Windows.
@@ -100,14 +109,16 @@ function safeEqual(a: string, b: string): boolean {
  * Le mot de passe vient soit du hash stocke (change depuis l'admin), soit de
  * la variable d'environnement HUB_PASSWORD (valeur d'origine du PRD).
  */
+/** Un candidat correspond-il a une empreinte `scrypt$sel$cle` ? */
+function matchesHash(hash: string, candidate: string): boolean {
+  const [algo, salt, key] = hash.split('$')
+  if (algo !== 'scrypt' || !salt || !key) return false
+  return safeEqual(crypto.scryptSync(candidate, salt, 32).toString('hex'), key)
+}
+
 export function verifyPassword(password: string): boolean {
   const cfg = getConfig()
-  if (cfg.passwordHash) {
-    const [algo, salt, key] = cfg.passwordHash.split('$')
-    if (algo !== 'scrypt' || !salt || !key) return false
-    const candidate = crypto.scryptSync(password, salt, 32).toString('hex')
-    return safeEqual(candidate, key)
-  }
+  if (cfg.passwordHash) return matchesHash(cfg.passwordHash, password)
   const envPassword = process.env.HUB_PASSWORD
   if (!envPassword) return false
   return safeEqual(password, envPassword)
@@ -116,4 +127,30 @@ export function verifyPassword(password: string): boolean {
 /** Un mot de passe est-il configure quelque part ? (sinon : ecran d'aide) */
 export function hasPassword(): boolean {
   return Boolean(getConfig().passwordHash || process.env.HUB_PASSWORD)
+}
+
+/* ------------------------------------------------------------------ */
+/* PIN du Terminal LAN                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Le terminal donne un shell complet : il ne s'ouvre pas avec le mot de passe
+ * qui sert a telecharger un APK. Tant qu'aucun PIN n'a ete pose depuis les
+ * reglages (donc depuis le PC serveur), la fonctionnalite reste fermee.
+ */
+export function hasTerminalPin(): boolean {
+  return Boolean(getConfig().terminalPinHash)
+}
+
+export function verifyTerminalPin(pin: string): boolean {
+  const hash = getConfig().terminalPinHash
+  if (!hash) return false
+  return matchesHash(hash, pin)
+}
+
+/** Longueur minimale : 4 chiffres est deja peu, en dessous c'est illusoire. */
+export const PIN_MIN = 4
+
+export function setTerminalPin(pin: string | null): void {
+  updateConfig({ terminalPinHash: pin ? hashPassword(pin) : null })
 }
