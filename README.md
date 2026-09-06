@@ -26,6 +26,7 @@ televerser, organiser et supprimer les fichiers du PC serveur.
 | Reglages | Choix du dossier racine (avec explorateur), mot de passe, re-scan, adresses reseau - **PC serveur uniquement** |
 | Emplacement | "Ouvrir l'emplacement" lance l'Explorateur Windows sur l'element - **PC serveur uniquement** |
 | Guidage | Un outil exterieur (Claude Code, script de build) fait briller un element et y accroche une bulle - voir `docs/guidage.md` |
+| **Terminal LAN** | Un vrai terminal du PC serveur, pilotable depuis le navigateur d'un appareil du reseau. Sessions persistantes, PIN dedie - voir plus bas |
 
 ### Multi-appareils
 
@@ -84,6 +85,11 @@ La console affiche l'adresse locale et l'adresse reseau a donner au PC client.
 | `HOST` | Interface d'ecoute | `0.0.0.0` |
 | `HUB_WATCH_MS` | Frequence du scan disque | `4000` |
 | `HUB_DATA_DIR` | Emplacement de `config.json` (racine, hash du mot de passe, secret de session) | `<projet>/data` |
+| `HUB_TERMINAL` | `0` desactive completement le Terminal LAN | actif |
+| `HUB_TERMINAL_SHELL` | Programme lance par une session | `powershell.exe` |
+| `HUB_TERMINAL_CWD` | Dossier de depart propose | le Bureau |
+| `HUB_TERMINAL_MAX` | Sessions simultanees maximum | `8` |
+| `HUB_TERMINAL_TAMPON` | Historique conserve par session, en caracteres | `65536` |
 
 ---
 
@@ -169,6 +175,72 @@ installer. Sur telephone ou tablette, ouvrir l'adresse dans le navigateur puis
 
 ---
 
+## Terminal LAN
+
+Un vrai terminal du PC serveur, ouvert depuis le navigateur de n'importe quel
+appareil du reseau. Il sert d'abord a piloter **Claude Code depuis un telephone**
+quand on n'est pas devant le PC.
+
+Le telephone n'execute rien : il ne fournit que l'ecran, le clavier et les
+touches. Tout tourne sur le PC.
+
+### Ouvrir le terminal
+
+1. **Sur le PC serveur** : Reglages > Terminal LAN > poser un PIN.
+   Tant qu'aucun PIN n'existe, la fonctionnalite est fermee et le reste.
+2. Sur le telephone : ouvrir le Hub, icone terminal dans l'entete (ou « Terminal
+   LAN » dans le menu « ... »), saisir le PIN.
+3. « Nouvelle session » : choisir le dossier de depart, dossier par dossier a
+   partir du Bureau, puis « Ouvrir ici ».
+
+Aucun serveur, port ni adresse en plus : le terminal vit dans le serveur qui sert
+deja les fichiers, sur la meme adresse.
+
+### Ce qui survit a quoi
+
+| Evenement | La session |
+|---|---|
+| Telephone verrouille, ecran eteint | continue |
+| WiFi coupe puis revenu | continue, l'ecran est rejoue au retour |
+| Onglet ferme, page rechargee | continue, on la retrouve dans la liste |
+| Le shell se termine (`exit`) | se termine |
+| Session fermee a la main | se termine |
+| **Le Hub s'arrete** | **se termine** - les shells sont tues, sans processus orphelin |
+
+⚠ Un arret **force** du Hub (Gestionnaire des taches, `taskkill /F`) ne laisse
+tourner aucun gestionnaire : les shells ouverts survivent alors au serveur et
+doivent etre fermes a la main. C'est une limite de Windows, pas un reglage.
+
+### Securite
+
+Le mot de passe du Hub donne acces a des fichiers. Le Terminal LAN donne un
+**shell complet sur le PC** : ce n'est pas le meme risque, ce n'est donc pas le
+meme secret.
+
+- **Deux serrures.** Il faut la session du Hub *et* le PIN du terminal.
+- **Le PIN ne se pose que depuis le PC serveur** (page Reglages, deja reservee a
+  localhost). Un appareil du reseau ne peut pas s'ouvrir l'acces tout seul.
+- **Ferme par defaut.** Sans PIN, rien ne s'ouvre.
+- 5 essais de PIN par tranche de 5 minutes et par appareil.
+- Les secrets du Hub (`HUB_PASSWORD`, `HUB_SECRET`) sont **retires de
+  l'environnement** du shell : impossible de les relire depuis le terminal.
+- `HUB_TERMINAL=0` desactive la fonctionnalite entierement.
+- Retirer le PIN (champ vide puis « Retirer ») referme le terminal immediatement.
+
+Comme le reste du Hub, cela n'est **pas fait pour etre expose sur internet** :
+aucune redirection de port, reseau prive uniquement.
+
+### Sur telephone
+
+Une barre de touches remplace ce que le clavier virtuel n'a pas : `CTRL`, `^C`,
+`^D`, `^L`, `ESC`, `TAB`, les fleches et `Entree`. Le champ du bas envoie une
+ligne entiere. `CTRL` s'arme puis se combine avec la prochaine lettre tapee.
+
+Le terminal se redimensionne tout seul, y compris au passage en paysage - qui
+reduit le decor pour rendre trois lignes de plus au terminal.
+
+---
+
 ## Fonctionnement interne
 
 - **Aucune base de donnees.** Le systeme de fichiers Windows est la source de
@@ -195,7 +267,8 @@ requete refusee cote serveur.
 app/            pages et routes API (App Router)
 components/     interface (arbre, liste, detail, editeur, corbeille, admin)
 lib/            configuration, scan disque, chemins surs, markdown, client HTTP
-server.js       serveur HTTP maison (detection localhost, gros transferts)
+server.js       serveur HTTP maison (detection localhost, gros transferts, WebSocket)
+terminal/       Terminal LAN cote serveur (protocole, PTY, sessions, WebSocket)
 middleware.ts   authentification de toutes les routes sauf le login
 deploiement/    scripts Windows (service, pare-feu, raccourci)
 ```
@@ -211,6 +284,9 @@ deploiement/    scripts Windows (service, pare-feu, raccourci)
 | L'icone "hors ligne" apparait dans l'entete | Le flux temps reel est coupe ; l'app continue en mode rafraichissement periodique |
 | "Acces refuse par Windows" a la suppression | Fichier ouvert dans un autre programme |
 | Le service ne demarre pas | Verifier `npm run build` effectue, et les journaux NSSM du service |
+| "Terminal : desactive" au demarrage | Le module natif ou le dossier `terminal/` manque. Depuis le depot : `npm install`. Depuis un paquet portable : le refabriquer, `deploiement/portable.mjs` refuse desormais de produire un paquet sans terminal |
+| Le Terminal LAN reste ferme | Aucun PIN n'est pose. Reglages > Terminal LAN, **depuis le PC serveur** |
+| Claude Code n'est pas connecte dans le terminal | Le Hub tourne en service Windows (compte SYSTEM) : il ne voit pas le `~/.claude` de la session utilisateur. Lancer le Hub sous sa propre session |
 
 ## Ce qui n'est volontairement pas fait (v1)
 
