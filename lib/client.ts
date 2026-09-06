@@ -57,6 +57,11 @@ export async function apiPost<T>(url: string, body?: unknown): Promise<T> {
   return lire<T>(res)
 }
 
+export async function apiDelete<T>(url: string): Promise<T> {
+  const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' })
+  return lire<T>(res)
+}
+
 export function messageErreur(err: unknown): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message

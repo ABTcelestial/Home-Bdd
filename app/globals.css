@@ -1883,3 +1883,369 @@ textarea.champ {
     padding: 0 10px;
   }
 }
+
+/* =====================================================================
+   Terminal LAN
+   ---------------------------------------------------------------------
+   Le terminal est le seul endroit sombre de l'application. Ce n'est pas
+   une fantaisie : les couleurs ANSI sont concues pour un fond sombre, et
+   l'interface de Claude Code y devient lisible. Le reste de la page garde
+   le blanc du Hub, comme le panneau de terminal d'un editeur.
+   ===================================================================== */
+
+.terminal-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.terminal-contenu {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 12px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- Liste des sessions (PRD 11) --- */
+
+.terminal-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.terminal-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  background: var(--blanc);
+  padding-right: 6px;
+}
+
+.terminal-item-corps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 48px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--rayon);
+}
+
+.terminal-item-corps:hover {
+  background: var(--survol);
+}
+
+.terminal-item-texte {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-item-titre {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-item-chemin,
+.terminal-item-meta {
+  font-size: 12px;
+  color: var(--texte-doux);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-item-meta {
+  flex: none;
+}
+
+.terminal-pastille {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--texte-faible);
+}
+
+.terminal-pastille.vivante {
+  background: var(--succes);
+}
+
+.terminal-pastille.morte {
+  background: var(--texte-faible);
+}
+
+/* --- Choix du dossier, une couche a la fois --- */
+
+.terminal-choix {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon-s);
+  background: var(--survol);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.terminal-raccourcis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.terminal-explorateur {
+  max-height: 42dvh;
+  overflow: auto;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon-s);
+  padding: 6px;
+}
+
+/* --- Ecran du terminal --- */
+
+.terminal-ecran {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--blanc);
+}
+
+.terminal-barre {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  border-bottom: 1px solid var(--bordure);
+}
+
+.terminal-identite {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.terminal-titre {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-chemin {
+  font-size: 11px;
+  color: var(--texte-doux);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-etat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--bordure);
+  color: var(--texte-doux);
+}
+
+.terminal-etat-connecte {
+  color: var(--succes);
+  border-color: #b7dfc4;
+  background: #f0fbf3;
+}
+
+.terminal-etat-perdu,
+.terminal-etat-termine {
+  color: var(--danger);
+  border-color: #f5c2c7;
+  background: var(--danger-doux);
+}
+
+/* Sur telephone, seule la pastille reste : le texte prend trop de place. */
+@media (max-width: 480px) {
+  .terminal-etat-texte {
+    display: none;
+  }
+}
+
+.terminal-alerte {
+  margin: 8px 12px 0;
+  align-items: center;
+}
+
+.terminal-surface {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: #12141a;
+  padding: 6px 0 6px 8px;
+}
+
+.terminal-toile {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-attente {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #9aa1ac;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* --- Barre de touches speciales (PRD 13) --- */
+
+.terminal-touches {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+  overflow-x: auto;
+  border-top: 1px solid var(--bordure);
+  background: var(--blanc);
+  /* La barre defile horizontalement plutot que de compresser les touches :
+     une cible tactile ne se retrecit pas. */
+  scrollbar-width: thin;
+}
+
+.touche {
+  flex: none;
+  min-width: 46px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border: 1px solid var(--bordure-forte);
+  border-radius: var(--rayon-s);
+  background: var(--blanc);
+  color: var(--texte);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.touche:hover {
+  background: var(--survol);
+}
+
+.touche:active {
+  background: var(--actif);
+}
+
+.touche-armee {
+  background: var(--accent-doux);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Ligne de saisie (PRD 14) --- */
+
+.terminal-saisie {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--bordure);
+  background: var(--blanc);
+}
+
+.terminal-saisie .champ {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.terminal-saisie .btn {
+  flex: none;
+  min-height: 42px;
+}
+
+/* La selection de xterm doit rester visible sur le fond sombre. */
+.terminal-surface .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* Paysage sur telephone : c'est justement la position qu'on prend pour VOIR
+   plus de terminal. On rend au PTY la hauteur mangee par le decor - mesure
+   avant/apres sur un ecran de 412 px de haut : 9 lignes -> 12 lignes. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .terminal-page > .entete {
+    height: 42px;
+  }
+
+  .terminal-barre {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .terminal-chemin {
+    display: none;
+  }
+
+  .terminal-touches,
+  .terminal-saisie {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  .terminal-saisie {
+    padding-bottom: max(5px, env(safe-area-inset-bottom));
+  }
+
+  .touche,
+  .terminal-saisie .btn {
+    min-height: 36px;
+  }
+}

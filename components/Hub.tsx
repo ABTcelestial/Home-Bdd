@@ -26,6 +26,7 @@ import {
   StickyNote,
   Sparkles,
   Check,
+  TerminalSquare,
 } from 'lucide-react'
 import { useArbre } from './useArbre'
 import { Arbre } from './Arbre'
@@ -501,6 +502,14 @@ export function Hub() {
           >
             <RefreshCw size={17} className={chargement ? 'tourne' : undefined} />
           </button>
+          <Link
+            href="/terminal"
+            className="btn-icone masque-mobile"
+            aria-label="Terminal LAN"
+            title="Terminal LAN : piloter le PC depuis un appareil du reseau"
+          >
+            <TerminalSquare size={17} />
+          </Link>
           <Link href="/corbeille" className="btn-icone masque-mobile" aria-label="Corbeille" title="Corbeille">
             <Trash2 size={17} />
           </Link>
@@ -1177,6 +1186,9 @@ function Dialogues(props: {
         >
           <RefreshCw size={15} /> Actualiser
         </button>
+        <Link className="btn" href="/terminal">
+          <TerminalSquare size={15} /> Terminal LAN
+        </Link>
         <Link className="btn" href="/corbeille">
           <Trash2 size={15} /> Corbeille
         </Link>
