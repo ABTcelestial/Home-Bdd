@@ -1,7 +1,16 @@
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { getConfig, updateConfig, hashPassword, defaultRoot, ensureRoot } from '@/lib/config'
+import {
+  getConfig,
+  updateConfig,
+  hashPassword,
+  defaultRoot,
+  ensureRoot,
+  hasTerminalPin,
+  setTerminalPin,
+  PIN_MIN,
+} from '@/lib/config'
 import { checkRoot, invalidateScan, scanRoot } from '@/lib/tree'
 import { ensureDb } from '@/lib/db'
 import { notifyChange } from '@/lib/events'
@@ -40,6 +49,9 @@ export async function GET(req: Request) {
       racineValide: etat.ok,
       erreurRacine: etat.erreur,
       motDePassePersonnalise: Boolean(cfg.passwordHash),
+      // Terminal LAN : l'interface a besoin de savoir si un PIN est deja pose.
+      terminalPinConfigure: hasTerminalPin(),
+      terminalDesactive: process.env.HUB_TERMINAL === '0',
       port: Number(process.env.PORT || 3000),
       adresses: adressesReseau(),
       hote: os.hostname(),
@@ -61,6 +73,7 @@ export async function POST(req: Request) {
       action?: string
       chemin?: string
       motDePasse?: string
+      pin?: string
     }
 
     switch (body.action) {
@@ -85,6 +98,26 @@ export async function POST(req: Request) {
         if (motDePasse.length < 4) return fail('Mot de passe trop court (4 caracteres minimum).')
         updateConfig({ passwordHash: hashPassword(motDePasse) })
         return Response.json({ ok: true })
+      }
+
+      /**
+       * PIN du Terminal LAN (PRD 15).
+       *
+       * Il ne se pose QUE depuis le PC serveur - la route entiere est derriere
+       * requireLocal. Un appareil du reseau ne peut donc pas s'ouvrir l'acces
+       * au shell tout seul, meme en connaissant le mot de passe du Hub.
+       */
+      case 'terminalPin': {
+        const pin = (body.pin || '').trim()
+        if (!pin) {
+          setTerminalPin(null)
+          return Response.json({ ok: true, pinConfigure: false })
+        }
+        if (pin.length < PIN_MIN) {
+          return fail(`PIN trop court (${PIN_MIN} caracteres minimum).`)
+        }
+        setTerminalPin(pin)
+        return Response.json({ ok: true, pinConfigure: true })
       }
 
       case 'rescan': {

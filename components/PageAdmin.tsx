@@ -17,6 +17,7 @@ import {
   ChevronUp,
   HardDrive,
   Database,
+  TerminalSquare,
 } from 'lucide-react'
 import { apiGet, apiPost, messageErreur } from '@/lib/client'
 import { formatSize } from '@/lib/filetypes'
@@ -29,6 +30,8 @@ type Reglages = {
   racineValide: boolean
   erreurRacine?: string
   motDePassePersonnalise: boolean
+  terminalPinConfigure: boolean
+  terminalDesactive: boolean
   port: number
   adresses: string[]
   hote: string
@@ -49,6 +52,7 @@ export function PageAdmin() {
   const [reglages, setReglages] = useState<Reglages | null>(null)
   const [racine, setRacine] = useState('')
   const [motDePasse, setMotDePasse] = useState('')
+  const [pin, setPin] = useState('')
   const [occupe, setOccupe] = useState<string | null>(null)
   const [explorateur, setExplorateur] = useState(false)
 
@@ -86,6 +90,25 @@ export function PageAdmin() {
       await apiPost('/api/admin/reglages', { action: 'motdepasse', motDePasse })
       setMotDePasse('')
       toasts.succes('Mot de passe change. Les sessions ouvertes restent valides.')
+      await charger()
+    } catch (err) {
+      toasts.erreur(messageErreur(err))
+    } finally {
+      setOccupe(null)
+    }
+  }
+
+  /**
+   * PIN du Terminal LAN. Un champ vide le retire, ce qui referme la
+   * fonctionnalite : c'est le geste de secours si un appareil est perdu.
+   */
+  const changerPin = async () => {
+    setOccupe('pin')
+    try {
+      await apiPost('/api/admin/reglages', { action: 'terminalPin', pin })
+      const retire = pin.trim().length === 0
+      setPin('')
+      toasts.succes(retire ? 'PIN retire : le Terminal LAN est referme.' : 'PIN du Terminal LAN enregistre.')
       await charger()
     } catch (err) {
       toasts.erreur(messageErreur(err))
@@ -238,6 +261,70 @@ export function PageAdmin() {
                   Changer
                 </button>
               </div>
+            </div>
+          </section>
+
+          {/* Terminal LAN */}
+          <section className="carte">
+            <div className="carte-entete">
+              <TerminalSquare size={16} aria-hidden /> Terminal LAN
+            </div>
+            <div className="carte-corps">
+              {reglages?.terminalDesactive ? (
+                <p className="champ-aide">
+                  Le Terminal LAN est desactive sur ce serveur (HUB_TERMINAL=0).
+                </p>
+              ) : (
+                <>
+                  <p className="champ-aide">
+                    {reglages?.terminalPinConfigure
+                      ? 'Un PIN est actif : le terminal est ouvert aux appareils du reseau qui le connaissent.'
+                      : "Aucun PIN : le terminal est ferme. Il ne s'ouvrira qu'apres en avoir pose un ici."}
+                  </p>
+                  <div className="alerte alerte-danger" style={{ marginBottom: 10 }}>
+                    <AlertTriangle size={16} aria-hidden />
+                    <span>
+                      Ce PIN donne un <strong>acces complet au shell de ce PC</strong> a tout
+                      appareil du reseau. Ce n&apos;est pas le mot de passe du Hub, et il ne doit
+                      pas lui ressembler.
+                    </span>
+                  </div>
+                  <div className="ligne-champ">
+                    <input
+                      className="champ"
+                      type="password"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                      placeholder={reglages?.terminalPinConfigure ? 'Nouveau PIN (vide = retirer)' : 'PIN du terminal'}
+                      autoComplete="new-password"
+                      inputMode="text"
+                      aria-label="PIN du Terminal LAN"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-principal"
+                      onClick={changerPin}
+                      disabled={
+                        occupe === 'pin' ||
+                        (pin.trim().length > 0 && pin.trim().length < 4) ||
+                        (pin.trim().length === 0 && !reglages?.terminalPinConfigure)
+                      }
+                    >
+                      {occupe === 'pin' ? (
+                        <Loader2 size={15} className="tourne" />
+                      ) : (
+                        <TerminalSquare size={15} />
+                      )}
+                      {pin.trim().length === 0 && reglages?.terminalPinConfigure ? 'Retirer' : 'Enregistrer'}
+                    </button>
+                  </div>
+                  {reglages?.terminalPinConfigure ? (
+                    <p className="champ-aide" style={{ marginTop: 8 }}>
+                      Champ vide puis « Retirer » referme le terminal immediatement.
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
           </section>
 
