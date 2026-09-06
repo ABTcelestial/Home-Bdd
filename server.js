@@ -164,6 +164,16 @@ app.prepare().then(() => {
   }
   process.on('SIGINT', () => arreter('Ctrl+C'))
   process.on('SIGTERM', () => arreter('SIGTERM'))
+  // Filet : couvre les sorties normales que les signaux ci-dessus ne voient pas
+  // (fin de script, process.exit ailleurs). Il ne peut rien contre un arret
+  // force du gestionnaire des taches - la limite est documentee dans le README.
+  process.on('exit', () => {
+    try {
+      require('./terminal/gestionnaire.cjs').gestionnaire().arreter()
+    } catch {
+      // Terminal jamais charge, ou deja arrete.
+    }
+  })
 
   server.listen(port, hostname, () => {
     const ips = localAddresses()

@@ -13,6 +13,9 @@ data/
 # Journaux du service Windows (NSSM)
 journaux/
 
+# Captures et journaux des tests de navigateur (Playwright MCP)
+.playwright-mcp/
+
 # Divers
 .DS_Store
 Thumbs.db
