@@ -15,6 +15,7 @@
  *
  *   node hub-depose.mjs --aide
  */
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
@@ -56,6 +57,9 @@ Regles appliquees :
     CHECKLIST, eux, se redeposent librement : documenter une version livree
     est un usage normal) ;
   - le dossier de version recoit un README.md minimal s'il n'en a pas ;
+  - tout dossier portant au moins un artefact recoit un EMPREINTES.md (nom,
+    taille, SHA-256), reecrit a chaque depot sur le contenu REEL du dossier :
+    ni le nom, ni versionName, ni versionCode n'identifient un binaire ;
   - rien n'est jamais ecrit dans db.json ni dans .corbeille/.
 `
 
@@ -113,6 +117,88 @@ async function majGuide(racine, entrees) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Empreintes des artefacts                                            */
+/* ------------------------------------------------------------------- */
+//
+// POURQUOI CE FICHIER EXISTE — mesure du 2026-09-10, sur les deux Hub a la fois.
+//
+// Ni le nom, ni le numero de version, ni le versionCode n'identifient un binaire.
+// Compte a l'aapt2 ce matin-la, sans supposer :
+//
+//   · chantiers-mobile : CINQ binaires differents portent le `versionCode 3`
+//     (T10 a 108 284 426 octets sur deux ABI ; T11/T12/T13/T14 a 40 498 746,
+//     40 500 874, 40 503 474 et 40 504 642 octets sur arm64 seul). QUATRE fichiers
+//     s'appellent `app-release.apk`. Et `celestial-chantiers-1.0.0.apk` existe en
+//     deux exemplaires : vc4 (publie) et vc1 (dans 1.0.0-T7).
+//   · salle-des-fetes : TROIS binaires sous le `versionCode 6`, et
+//     `celestial-salle-des-fetes-1.1.0.apk` porte deux binaires selon le dossier.
+//   · les DIX APK de Chantiers annoncent `versionName 1.0.0`.
+//
+// Consequence concrete, et c'est elle qui a fait ecrire ce code : quand un client
+// dit « j'ai la 1.0.0 », l'app affiche `v1.0.0`, le registre enregistre `1.0.0`, et
+// rien de tout ca ne dit LEQUEL des dix il a. La reponse ne peut venir que de la
+// TAILLE et de l'EMPREINTE du fichier — deux choses qu'aucun ecran n'affiche et que
+// personne ne note apres coup.
+//
+// Alors on les note AU DEPOT, quand elles sont encore sous la main. Trois lignes par
+// binaire, et « lequel a-t-il ? » devient une comparaison au lieu d'une enquete.
+//
+// Le fichier est REECRIT a chaque depot, et il decrit TOUT le dossier — pas seulement
+// ce qui vient d'arriver. Un fichier d'empreintes qui ne parlerait que du dernier
+// artefact serait la version de ce piege qu'on essaie justement de fermer.
+const ARTEFACTS = new Set(['.apk', '.aab', '.exe', '.msi', '.zip', '.dmg', '.appimage'])
+const EMPREINTES = 'EMPREINTES.md'
+
+async function sha256(chemin) {
+  const h = crypto.createHash('sha256')
+  // Par flux : un APK fait 100 Mo et un installeur Electron davantage ; les lire
+  // d'un bloc en memoire marcherait aujourd hui et casserait sans prevenir plus tard.
+  await new Promise((resoudre, rejeter) => {
+    const flux = fs.createReadStream(chemin)
+    flux.on('data', (bloc) => h.update(bloc))
+    flux.on('end', resoudre)
+    flux.on('error', rejeter)
+  })
+  return h.digest('hex')
+}
+
+async function ecrireEmpreintes(dossierVersion, projet, version) {
+  const noms = fs
+    .readdirSync(dossierVersion)
+    .filter((n) => ARTEFACTS.has(path.extname(n).toLowerCase()))
+    .sort()
+  // Aucun artefact : un depot de documentation seule. On ne laisse pas derriere nous
+  // un tableau vide qui ferait croire que le dossier n'en a jamais porte.
+  if (noms.length === 0) return null
+
+  const lignes = []
+  for (const nom of noms) {
+    const chemin = path.join(dossierVersion, nom)
+    const octets = fs.statSync(chemin).size
+    lignes.push({ nom, octets, sha: await sha256(chemin) })
+  }
+
+  const texte =
+    `# Empreintes — ${projet} ${version}\n\n` +
+    `Ecrit par \`hub-depose.mjs\` le ${jourCourant()}. **Ne pas editer a la main** : il est\n` +
+    `reecrit a chaque depot dans ce dossier.\n\n` +
+    `> **A quoi ca sert.** Ni le nom du fichier, ni \`versionName\`, ni \`versionCode\` n'identifient\n` +
+    `> un binaire — mesure : cinq APK de \`chantiers-mobile\` partagent le \`versionCode 3\`, et les\n` +
+    `> dix annoncent \`1.0.0\`. Pour repondre a « quel binaire ce client a-t-il ? », on compare la\n` +
+    `> **taille** et le **SHA-256**, et rien d'autre.\n\n` +
+    `| fichier | octets | SHA-256 |\n|---|---:|---|\n` +
+    lignes.map((l) => `| \`${l.nom}\` | ${l.octets.toLocaleString('fr-FR')} | \`${l.sha}\` |`).join('\n') +
+    `\n\n**Verifier un fichier recu**, sans outil Android :\n\n` +
+    '```bash\n' +
+    `sha256sum <fichier>        # Linux, macOS, Git Bash\n` +
+    `certutil -hashfile <fichier> SHA256   # Windows, sans rien installer\n` +
+    '```\n'
+
+  await fsp.writeFile(path.join(dossierVersion, EMPREINTES), texte, 'utf8')
+  return lignes.length
+}
+
+/* ------------------------------------------------------------------- */
 /* Archivage de la version publiee                                     */
 /* ------------------------------------------------------------------ */
 
@@ -298,6 +384,13 @@ async function main() {
     )
     console.log(`cree    : ${projet}/${version}/README.md (squelette)`)
   }
+
+  // Les empreintes se prennent MAINTENANT, pendant que les fichiers sont sous la main.
+  // Apres coup c'est une enquete : il faut retrouver la machine, l'artefact EAS, ou le
+  // client lui-meme. (Et un depot de documentation seule en profite aussi : le tableau
+  // est recalcule sur le contenu reel du dossier, pas sur ce qui vient d'arriver.)
+  const empreintes = await ecrireEmpreintes(dossierVersion, projet, version)
+  if (empreintes) console.log(`empreintes : ${projet}/${version}/${EMPREINTES} — ${empreintes} artefact(s)`)
 
   const bulle = args.bulle || (estTest ? 'Build de test a verifier' : `${projet} ${version} publiee`)
 
