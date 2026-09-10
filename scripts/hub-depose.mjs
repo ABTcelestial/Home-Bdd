@@ -167,9 +167,36 @@ async function ecrireEmpreintes(dossierVersion, projet, version) {
     .readdirSync(dossierVersion)
     .filter((n) => ARTEFACTS.has(path.extname(n).toLowerCase()))
     .sort()
-  // Aucun artefact : un depot de documentation seule. On ne laisse pas derriere nous
-  // un tableau vide qui ferait croire que le dossier n'en a jamais porte.
-  if (noms.length === 0) return null
+  // Aucun artefact — deux cas, et le second a failli m'echapper (releve par la session
+  // parallele en revue de cette PR le 2026-09-10).
+  //
+  //  · Le dossier n'en a JAMAIS porte : un depot de documentation seule. On ne cree rien
+  //    — un tableau vide ferait croire qu'il en a porte.
+  //  · ⚠ Le dossier en portait et n'en porte PLUS : alors un EMPREINTES.md existe deja,
+  //    et le laisser en place le ferait DECRIRE DES FICHIERS ABSENTS. Ce serait pire que
+  //    de ne rien avoir, parce que son propre en-tete promet qu'il est reecrit a chaque
+  //    depot : un lecteur fait confiance a sa date. C'est le motif exact que ce depot a
+  //    paye trois fois cette nuit-la — un README qui criait NE PAS LIVRER sur un binaire
+  //    corrige, un commentaire decrivant une branche morte, un tableau d'artefact resté
+  //    sur le binaire remplace.
+  //
+  // On ne SUPPRIME pas : on date. Le fichier dit ce qu'il sait, y compris qu'il ne sait
+  // plus rien.
+  if (noms.length === 0) {
+    const existant = path.join(dossierVersion, EMPREINTES)
+    if (!fs.existsSync(existant)) return null
+    await fsp.writeFile(
+      existant,
+      `# Empreintes — ${projet} ${version}\n\n` +
+        `⚠ **Au ${jourCourant()}, ce dossier ne porte plus aucun artefact.**\n\n` +
+        `Il en portait : ce fichier decrivait leur taille et leur empreinte. Ils ont ete\n` +
+        `retires ou renommes **hors de \`hub-depose.mjs\`**, qui ne peut donc pas dire ce\n` +
+        `qu'ils sont devenus. Le tableau precedent a ete retire plutot que laisse en place :\n` +
+        `un tableau qui nomme des fichiers absents est pire qu'un tableau absent.\n`,
+      'utf8',
+    )
+    return 0
+  }
 
   const lignes = []
   for (const nom of noms) {
@@ -188,7 +215,10 @@ async function ecrireEmpreintes(dossierVersion, projet, version) {
     `> **taille** et le **SHA-256**, et rien d'autre.\n\n` +
     `| fichier | octets | SHA-256 |\n|---|---:|---|\n` +
     lignes.map((l) => `| \`${l.nom}\` | ${l.octets.toLocaleString('fr-FR')} | \`${l.sha}\` |`).join('\n') +
-    `\n\n**Verifier un fichier recu**, sans outil Android :\n\n` +
+    `\n\n⚠ **Tableau vrai au ${jourCourant()}, date du dernier depot dans ce dossier.** Un\n` +
+    `renommage ou un retrait fait A LA MAIN ne passe pas par \`hub-depose.mjs\` et ne met\n` +
+    `donc PAS ce tableau a jour. En cas de doute, rehacher le fichier.\n\n` +
+    `**Verifier un fichier recu**, sans outil Android :\n\n` +
     '```bash\n' +
     `sha256sum <fichier>        # Linux, macOS, Git Bash\n` +
     `certutil -hashfile <fichier> SHA256   # Windows, sans rien installer\n` +
@@ -389,8 +419,18 @@ async function main() {
   // Apres coup c'est une enquete : il faut retrouver la machine, l'artefact EAS, ou le
   // client lui-meme. (Et un depot de documentation seule en profite aussi : le tableau
   // est recalcule sur le contenu reel du dossier, pas sur ce qui vient d'arriver.)
+  // `null` = rien a dire (aucun artefact, aucun fichier d'empreintes) ; `0` = le dossier
+  // en portait et n'en porte plus, et le fichier vient d'etre remis a l'heure. Les deux
+  // sont faux au sens de JavaScript, donc on teste le `null` explicitement — sinon le cas
+  // qui MERITE le plus d'etre annonce serait le seul a se taire.
   const empreintes = await ecrireEmpreintes(dossierVersion, projet, version)
-  if (empreintes) console.log(`empreintes : ${projet}/${version}/${EMPREINTES} — ${empreintes} artefact(s)`)
+  if (empreintes !== null) {
+    console.log(
+      empreintes === 0
+        ? `empreintes : ${projet}/${version}/${EMPREINTES} — plus aucun artefact, tableau retire`
+        : `empreintes : ${projet}/${version}/${EMPREINTES} — ${empreintes} artefact(s)`,
+    )
+  }
 
   const bulle = args.bulle || (estTest ? 'Build de test a verifier' : `${projet} ${version} publiee`)
 
