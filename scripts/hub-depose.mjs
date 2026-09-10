@@ -22,6 +22,8 @@ import path from 'node:path'
 
 const RACINE_DEFAUT = 'D:\\CelestialHub'
 const GUIDE = '.hub-guide.json'
+// Le sous-dossier ou vivent les builds de TEST — jamais a cote d une version livree.
+const TEST = 'test'
 const TONS = ['info', 'action', 'alerte']
 // 1.0.0, 1.0.0-T4, 2.3.1-N10I
 const VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+)?$/
@@ -50,6 +52,10 @@ hub-depose — deposer un livrable dans le Celestial Hub
   --aide
 
 Regles appliquees :
+  - un build de TEST (version a suffixe : 1.0.0-T4, 1.1.0-R1) est depose dans
+    <projet>/test/<version>/, JAMAIS a cote d'une version livree. Regle de Ryan
+    du 2026-09-10 : le dossier d'un projet ne montre que ce qui est parti chez
+    un client ;
   - une version SANS suffixe -T est la version publiee ; il ne peut y en avoir
     qu'une hors archive/ (utiliser --archiver pour remplacer l'ancienne) ;
   - un artefact deja present dans une version PUBLIEE n'est jamais ecrase : il
@@ -236,7 +242,7 @@ function versionsPubliees(dossierProjet) {
   if (!fs.existsSync(dossierProjet)) return []
   return fs
     .readdirSync(dossierProjet, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== 'archive' && VERSION.test(e.name))
+    .filter((e) => e.isDirectory() && e.name !== 'archive' && e.name !== TEST && VERSION.test(e.name))
     .map((e) => e.name)
     .filter((nom) => !nom.includes('-'))
 }
@@ -322,8 +328,20 @@ async function main() {
   if (!fs.existsSync(racine)) throw new Error(`Racine du Hub introuvable : ${racine}`)
 
   const dossierProjet = path.join(racine, projet)
-  const dossierVersion = path.join(dossierProjet, version)
   const estTest = version.includes('-')
+  // ⚠ UN BUILD DE TEST NE S'ASSIED PAS A COTE D'UNE VERSION LIVREE. Regle de Ryan
+  // (2026-09-10) : le dossier d'un projet ne doit montrer QUE ce qui est parti chez un
+  // client. Le 10/09 il y avait NEUF dossiers de test a cote de la version publiee de
+  // chantiers-mobile, dont deux portaient le meme nom de fichier officiel avec des
+  // binaires differents. Un dossier ou l'on doit CHOISIR est un dossier ou l'on se trompe.
+  //
+  // Les builds de test vont donc dans `<projet>/test/<version>/`, et rien d'autre ne
+  // change : meme README, meme CHECKLIST, memes empreintes.
+  const dossierVersion = estTest ? path.join(dossierProjet, TEST, version) : path.join(dossierProjet, version)
+  // ⚠ LE CHEMIN AFFICHE ET LE CHEMIN DES MARQUES DOIVENT ETRE LE VRAI. Sans ca, le
+  // script annonce `projet/1.0.0-T1/x.apk` alors que le fichier est dans `projet/test/...`,
+  // et le fichier de guidage pointe a cote — la marque ne brille sur rien.
+  const rel = estTest ? `${projet}/${TEST}/${version}` : `${projet}/${version}`
 
   // Un binaire publie ne disparait JAMAIS sans laisser de trace.
   //
@@ -383,7 +401,7 @@ async function main() {
     const nom = path.basename(source)
     await fsp.copyFile(source, path.join(dossierVersion, nom))
     deposes.push(nom)
-    console.log(`depose  : ${projet}/${version}/${nom}`)
+    console.log(`depose  : ${rel}/${nom}`)
   }
 
   const docs = []
@@ -395,7 +413,7 @@ async function main() {
     if (!fs.existsSync(args[option])) throw new Error(`Fichier introuvable : ${args[option]}`)
     await fsp.copyFile(args[option], path.join(dossierVersion, cible))
     docs.push(cible)
-    console.log(`depose  : ${projet}/${version}/${cible}`)
+    console.log(`depose  : ${rel}/${cible}`)
   }
 
   // README minimal : mieux qu'un dossier muet dans six mois. Mais s'il y a deja
@@ -412,7 +430,7 @@ async function main() {
         `## Ce qui change\n\n_A completer._\n\n## Quoi tester\n\n_A completer._\n`,
       'utf8',
     )
-    console.log(`cree    : ${projet}/${version}/README.md (squelette)`)
+    console.log(`cree    : ${rel}/README.md (squelette)`)
   }
 
   // Les empreintes se prennent MAINTENANT, pendant que les fichiers sont sous la main.
@@ -427,8 +445,8 @@ async function main() {
   if (empreintes !== null) {
     console.log(
       empreintes === 0
-        ? `empreintes : ${projet}/${version}/${EMPREINTES} — plus aucun artefact, tableau retire`
-        : `empreintes : ${projet}/${version}/${EMPREINTES} — ${empreintes} artefact(s)`,
+        ? `empreintes : ${rel}/${EMPREINTES} — plus aucun artefact, tableau retire`
+        : `empreintes : ${rel}/${EMPREINTES} — ${empreintes} artefact(s)`,
     )
   }
 
@@ -447,7 +465,7 @@ async function main() {
 
   const entrees = {}
   for (const nom of aMarquer) {
-    entrees[`${projet}/${version}/${nom}`] = { brille: true, bulle, ton }
+    entrees[`${rel}/${nom}`] = { brille: true, bulle, ton }
   }
   await majGuide(racine, entrees)
   console.log(`marque  : ${aMarquer.length} element(s) dans ${GUIDE} — "${bulle}"`)
