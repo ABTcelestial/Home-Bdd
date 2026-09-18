@@ -15,10 +15,12 @@
  *
  *   node hub-depose.mjs --aide
  */
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const RACINE_DEFAUT = 'D:\\CelestialHub'
 const GUIDE = '.hub-guide.json'
@@ -154,6 +156,123 @@ async function majGuide(racine, entrees) {
 // artefact serait la version de ce piege qu'on essaie justement de fermer.
 const ARTEFACTS = new Set(['.apk', '.aab', '.exe', '.msi', '.zip', '.dmg', '.appimage'])
 const EMPREINTES = 'EMPREINTES.md'
+
+/* ------------------------------------------------------------------- */
+/* Ce que l'artefact DECLARE, contre ce que le depot annonce            */
+/* ------------------------------------------------------------------- */
+//
+// POURQUOI CETTE MOITIE MANQUAIT — mesure du 2026-09-18.
+//
+// Le bloc ci-dessus note l'empreinte et la taille : il repond a « LEQUEL des dix
+// a-t-il ? ». Il ne repond PAS a « ce binaire dit-il bien ce que le dossier
+// annonce ? ». Et la mesure du 2026-09-10, trois ecrans plus haut, montre que ce
+// cas s'est deja produit : « les DIX APK de Chantiers annoncent versionName 1.0.0 ».
+// Un APK mal etiquete se deposait donc sous le bon nom de dossier, avec une fiche
+// d'empreintes parfaite qui documentait fidelement la mauvaise chose.
+//
+// Le risque a AUGMENTE depuis que les builds locaux sont la norme (Ryan, 2026-09-15) :
+// le dossier `android/` est genere et gitignore, donc il peut retarder sur `app.json`
+// sans que rien ne le dise. Mesure du jour : Chantiers mobile declare 1.1.0 / 11 dans
+// `app.json` et son `android/app/build.gradle` local porte encore 1.0.0 / 7.
+//
+// ⚠ Ce controle est INERTE quand il ne peut pas se prononcer (pas d'aapt2, artefact
+// qui n'est pas un APK) : il le DIT et laisse passer. Un controle qui refuse ce qu'il
+// ne sait pas lire est un controle qu'on finit par contourner.
+// ⚠ LES DEUX FAMILLES NE DECLARENT PAS LA MEME CHOSE, et le mesurer a evite un faux
+// refus (2026-09-18, sur les 12 .exe deja deposes dans le Hub) :
+//
+//   · un APK depose en `1.0.0-T4` declare `1.0.0` — la BASE, sans le suffixe ;
+//   · un installeur Electron depose en `1.0.0-T10` declare `1.0.0-T10` — TOUT, suffixe
+//     compris (mesure : les six installeurs de l'ERP, un par dossier de test).
+//
+// La regle accepte donc la version COMPLETE ou sa BASE. Elle reste stricte sur ce qui
+// compte : un binaire 1.1.0 depose en 1.0.0-T4 ne correspond ni a l'une ni a l'autre.
+const EXT_LISIBLES = new Set(['.apk', '.exe'])
+
+/** Le aapt2 le plus recent du SDK, ou null si le SDK n'est pas sur ce poste. */
+export function trouverAapt2() {
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || path.join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk')
+  const outils = path.join(sdk, 'build-tools')
+  if (!fs.existsSync(outils)) return null
+  const versions = fs
+    .readdirSync(outils)
+    .filter((n) => fs.existsSync(path.join(outils, n, process.platform === 'win32' ? 'aapt2.exe' : 'aapt2')))
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+  if (versions.length === 0) return null
+  return path.join(outils, versions[0], process.platform === 'win32' ? 'aapt2.exe' : 'aapt2')
+}
+
+/** Ce que l'APK declare, lu dans son manifeste. `null` si illisible. */
+export function versionDeclaree(aapt, chemin) {
+  let sortie
+  try {
+    sortie = execFileSync(aapt, ['dump', 'badging', chemin], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  } catch {
+    return null
+  }
+  const nom = /versionName='([^']*)'/.exec(sortie)?.[1]
+  const code = /versionCode='([^']*)'/.exec(sortie)?.[1]
+  return nom ? { nom, code: code ?? '?' } : null
+}
+
+/**
+ * Ce qu'un executable Windows declare, lu dans ses metadonnees. `null` si illisible
+ * ou si on n'est pas sous Windows — un .exe pose sur un autre systeme n'est alors pas
+ * juge, comme tout ce que ce controle ne sait pas lire.
+ */
+export function versionExe(chemin) {
+  if (process.platform !== 'win32') return null
+  let sortie
+  try {
+    sortie = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `$v = (Get-Item -LiteralPath ${JSON.stringify(chemin)}).VersionInfo; Write-Output $v.ProductVersion`],
+      { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024 },
+    )
+  } catch {
+    return null
+  }
+  const nom = sortie.trim().split(/\r?\n/)[0]?.trim()
+  return nom ? { nom, code: '-' } : null
+}
+
+/**
+ * Refuse un depot dont un artefact n'annonce pas la version de son dossier.
+ *
+ * La comparaison accepte la version COMPLETE ou sa BASE — les deux familles ne
+ * declarent pas la meme chose, voir `EXT_LISIBLES`.
+ */
+export function verifierVersionsDeclarees(fichiers, version) {
+  const lisibles = fichiers.filter((f) => EXT_LISIBLES.has(path.extname(f).toLowerCase()))
+  if (lisibles.length === 0) return
+  const apks = lisibles.filter((f) => path.extname(f).toLowerCase() === '.apk')
+  const aapt = apks.length > 0 ? trouverAapt2() : null
+  if (apks.length > 0 && !aapt) {
+    console.log("version declaree : APK non verifie (aapt2 introuvable — SDK Android absent de ce poste)")
+  }
+  const base = version.split('-')[0]
+  for (const artefact of lisibles) {
+    const estApk = path.extname(artefact).toLowerCase() === '.apk'
+    if (estApk && !aapt) continue
+    const lu = estApk ? versionDeclaree(aapt, artefact) : versionExe(artefact)
+    if (!lu) {
+      console.log(`version declaree : illisible dans ${path.basename(artefact)} — non verifiee`)
+      continue
+    }
+    if (lu.nom !== version && lu.nom !== base) {
+      throw new Error(
+        `${path.basename(artefact)} DECLARE la version ${lu.nom}${lu.code !== '-' ? ` (code ${lu.code})` : ''}, ` +
+          `et tu le deposes en ${version}. Le dossier dirait une chose, le binaire une autre — et c'est ` +
+          `le binaire que le client installe. Cause la plus frequente pour un APK : un dossier android/ ` +
+          `genere qui retarde sur app.json (il est gitignore, donc rien ne le rattrape) — relancer la ` +
+          `prebuild puis reconstruire. Sinon, deposer sous ${lu.nom}.`,
+      )
+    }
+    console.log(
+      `version declaree : ${path.basename(artefact)} dit ${lu.nom}${lu.code !== '-' ? ` (code ${lu.code})` : ''} — conforme`,
+    )
+  }
+}
 
 async function sha256(chemin) {
   const h = crypto.createHash('sha256')
@@ -327,6 +446,13 @@ async function main() {
 
   if (!fs.existsSync(racine)) throw new Error(`Racine du Hub introuvable : ${racine}`)
 
+  // ⚠ AVANT TOUTE ACTION DESTRUCTIVE. Ce qui suit archive des versions publiees et
+  // cree des dossiers ; un refus qui arriverait apres aurait deja deplace un binaire.
+  for (const f of args.fichier) {
+    if (!fs.existsSync(f)) throw new Error(`Fichier introuvable : ${f}`)
+  }
+  verifierVersionsDeclarees(args.fichier, version)
+
   const dossierProjet = path.join(racine, projet)
   const estTest = version.includes('-')
   // ⚠ UN BUILD DE TEST NE S'ASSIED PAS A COTE D'UNE VERSION LIVREE. Regle de Ryan
@@ -471,7 +597,20 @@ async function main() {
   console.log(`marque  : ${aMarquer.length} element(s) dans ${GUIDE} — "${bulle}"`)
 }
 
-main().catch((err) => {
-  console.error('hub-depose : ' + err.message)
-  process.exit(1)
-})
+// ⚠ `main()` ne part QUE si ce fichier est la commande lancee. Sans ce garde, l'importer
+// pour le tester le ferait deposer pour de vrai — et un depot ne se defait pas.
+//
+// La comparaison passe par `fileURLToPath`, jamais par une URL fabriquee a la main :
+// sous Windows `import.meta.url` vaut `file:///C:/...` (TROIS barres), et une
+// concatenation `file://` + chemin ne correspond jamais. Mesure du 2026-09-18 dans un
+// autre depot : le bloc ne s'executait pas, sans erreur et sans sortie.
+const lanceEnCommande =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url).toLowerCase() === path.resolve(process.argv[1]).toLowerCase()
+
+if (lanceEnCommande) {
+  main().catch((err) => {
+    console.error('hub-depose : ' + err.message)
+    process.exit(1)
+  })
+}
