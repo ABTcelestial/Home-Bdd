@@ -93,18 +93,73 @@ describe('le depot confronte le binaire a ce que le dossier annonce', () => {
     racines.push(vide)
     const { code, sortie } = deposer(racine, '9.9.9', APK.chemin, { ANDROID_HOME: join(vide, 'nulle-part'), ANDROID_SDK_ROOT: join(vide, 'nulle-part'), LOCALAPPDATA: vide })
     assert.equal(code, 0, sortie)
-    assert.match(sortie, /non verifiee/)
+    assert.match(sortie, /non verifie/)
   })
 
-  test("un artefact qui n'est pas un APK n'est pas juge — et ne bloque rien", () => {
-    // Ce cas ne demande aucun APK : il tourne partout, et c'est voulu — c'est celui qui
-    // garantit qu'un installeur Electron ou un .zip continue de se deposer.
+  test("un artefact d'un type qu'on ne sait pas lire n'est pas juge — et ne bloque rien", () => {
+    // Ce cas ne demande aucun binaire reel : il tourne partout, et c'est voulu — c'est
+    // celui qui garantit qu'un .zip ou un .dmg continue de se deposer.
+    const racine = racineNeuve()
+    const faux = join(racineNeuve(), 'paquet.zip')
+    writeFileSync(faux, 'ceci n est pas une archive')
+    const { code, sortie } = deposer(racine, '2.0.0', faux)
+    assert.equal(code, 0, sortie)
+    assert.doesNotMatch(sortie, /DECLARE la version/)
+    assert.ok(existsSync(join(racine, 'app-essai', '2.0.0', 'paquet.zip')), sortie)
+  })
+
+  test("un .exe illisible se declare non verifie, il ne bloque pas", () => {
+    // Un fichier qui porte l'extension sans porter les metadonnees : le controle doit
+    // le DIRE et laisser passer, jamais refuser ce qu'il ne sait pas lire.
     const racine = racineNeuve()
     const faux = join(racineNeuve(), 'installeur.exe')
     writeFileSync(faux, 'ceci n est pas un executable')
     const { code, sortie } = deposer(racine, '2.0.0', faux)
     assert.equal(code, 0, sortie)
     assert.doesNotMatch(sortie, /DECLARE la version/)
-    assert.ok(existsSync(join(racine, 'app-essai', '2.0.0', 'installeur.exe')), sortie)
   })
+})
+
+// ── LES INSTALLEURS ELECTRON — l'autre famille, et elle ne declare PAS la meme chose ──
+//
+// Mesure du 2026-09-18 sur les 12 .exe deja deposes : un installeur Electron declare la
+// version COMPLETE, suffixe compris (`1.0.0-T10` dans un dossier `1.0.0-T10`), la ou un
+// APK ne declare que la BASE. Etendre la regle de l'APK telle quelle aurait refuse tous
+// les installeurs de test — d'ou ces cas.
+
+/** Un installeur reel du Hub, s'il y en a un. */
+function exeReel(dossier, version) {
+  if (!existsSync(dossier)) return null
+  const nom = readdirSync(dossier).find((n) => n.toLowerCase().endsWith('.exe'))
+  return nom ? { chemin: join(dossier, nom), version } : null
+}
+
+const EXE = exeReel('D:/CelestialHub/chantiers-desktop/1.1.0', '1.1.0')
+const EXE_SUFFIXE = exeReel('D:/CelestialHub/erp-desktop/1.0.0-T13', '1.0.0-T13')
+
+describe("un installeur Electron est juge sur ce qu'il declare", () => {
+  test('la version juste passe', { skip: EXE === null && 'aucun installeur sur ce poste' }, () => {
+    const racine = racineNeuve()
+    const { code, sortie } = deposer(racine, EXE.version, EXE.chemin)
+    assert.equal(code, 0, sortie)
+    assert.match(sortie, /version declaree : .*conforme/)
+  })
+
+  test('une version fausse est refusee', { skip: EXE === null && 'aucun installeur sur ce poste' }, () => {
+    const racine = racineNeuve()
+    const { code, sortie } = deposer(racine, '7.7.7', EXE.chemin)
+    assert.notEqual(code, 0, 'le depot aurait du echouer')
+    assert.match(sortie, /DECLARE la version/)
+  })
+
+  test(
+    '⚠ un installeur qui declare le suffixe COMPLET est accepte — la regle de la BASE seule le refuserait',
+    { skip: EXE_SUFFIXE === null && 'aucun installeur suffixe sur ce poste' },
+    () => {
+      const racine = racineNeuve()
+      const { code, sortie } = deposer(racine, EXE_SUFFIXE.version, EXE_SUFFIXE.chemin)
+      assert.equal(code, 0, sortie)
+      assert.match(sortie, /conforme/)
+    },
+  )
 })
