@@ -20,6 +20,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const RACINE_DEFAUT = 'D:\\CelestialHub'
 const GUIDE = '.hub-guide.json'
@@ -180,7 +181,7 @@ const EMPREINTES = 'EMPREINTES.md'
 const EXT_LISIBLES = new Set(['.apk'])
 
 /** Le aapt2 le plus recent du SDK, ou null si le SDK n'est pas sur ce poste. */
-function trouverAapt2() {
+export function trouverAapt2() {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || path.join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk')
   const outils = path.join(sdk, 'build-tools')
   if (!fs.existsSync(outils)) return null
@@ -193,7 +194,7 @@ function trouverAapt2() {
 }
 
 /** Ce que l'APK declare, lu dans son manifeste. `null` si illisible. */
-function versionDeclaree(aapt, chemin) {
+export function versionDeclaree(aapt, chemin) {
   let sortie
   try {
     sortie = execFileSync(aapt, ['dump', 'badging', chemin], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
@@ -212,7 +213,7 @@ function versionDeclaree(aapt, chemin) {
  * `1.0.0-T4` et son APK declare `1.0.0` — c'est voulu, le suffixe nomme un dossier
  * du Hub, jamais la version embarquee.
  */
-function verifierVersionsDeclarees(fichiers, version) {
+export function verifierVersionsDeclarees(fichiers, version) {
   const apks = fichiers.filter((f) => EXT_LISIBLES.has(path.extname(f).toLowerCase()))
   if (apks.length === 0) return
   const aapt = trouverAapt2()
@@ -563,7 +564,20 @@ async function main() {
   console.log(`marque  : ${aMarquer.length} element(s) dans ${GUIDE} — "${bulle}"`)
 }
 
-main().catch((err) => {
-  console.error('hub-depose : ' + err.message)
-  process.exit(1)
-})
+// ⚠ `main()` ne part QUE si ce fichier est la commande lancee. Sans ce garde, l'importer
+// pour le tester le ferait deposer pour de vrai — et un depot ne se defait pas.
+//
+// La comparaison passe par `fileURLToPath`, jamais par une URL fabriquee a la main :
+// sous Windows `import.meta.url` vaut `file:///C:/...` (TROIS barres), et une
+// concatenation `file://` + chemin ne correspond jamais. Mesure du 2026-09-18 dans un
+// autre depot : le bloc ne s'executait pas, sans erreur et sans sortie.
+const lanceEnCommande =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url).toLowerCase() === path.resolve(process.argv[1]).toLowerCase()
+
+if (lanceEnCommande) {
+  main().catch((err) => {
+    console.error('hub-depose : ' + err.message)
+    process.exit(1)
+  })
+}
