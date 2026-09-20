@@ -26,6 +26,22 @@ const RACINE_DEFAUT = 'D:\\CelestialHub'
 const GUIDE = '.hub-guide.json'
 // Le sous-dossier ou vivent les builds de TEST — jamais a cote d une version livree.
 const TEST = 'test'
+// LES VERSIONS LIVREES VIVENT DANS <projet>/deployed/ (Ryan, 2026-09-20).
+//
+// AVANT : une seule version publiee pouvait exister hors archive/, et deposer la suivante
+// obligeait a descendre la precedente dans archive/. L'invariant repondait a la question
+// « laquelle je donne au client ? » par la contrainte : il n'y en avait qu'une.
+//
+// CE QUI A CHANGE, et c'est une decision d'architecture, pas de rangement : c'est CORE qui
+// repond desormais a cette question. Core sert toujours la derniere version, et coupe
+// l'acces des apps dont le schema est plus ancien que le sien (version de schema). Le Hub
+// n'a donc plus a arbitrer ; il redevient ce qu'il doit etre : la memoire de TOUT ce qui est
+// parti chez un client, cote a cote, consultable.
+//
+// ⚠ CE QUI NE CHANGE PAS : un binaire livre ne s'ecrase JAMAIS. La protection qui a sauve
+// Chantiers le 27/08 reste entiere plus bas — deposer un artefact par-dessus une version
+// deja livree demande toujours --archiver --pourquoi.
+const DEPLOYED = 'deployed'
 const TONS = ['info', 'action', 'alerte']
 // 1.0.0, 1.0.0-T4, 2.3.1-N10I
 const VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+)?$/
@@ -46,7 +62,7 @@ hub-depose — deposer un livrable dans le Celestial Hub
                         le dossier a un point d'entree : le guide, pas l'APK.
   --readme <chemin>     README.md a placer dans le dossier de version
   --checklist <chemin>  CHECKLIST.md a placer dans le dossier de version
-  --archiver            descend la version publiee actuelle dans archive/<AAAA-MM>/
+  --archiver            descend une version livree du meme numero dans archive/<AAAA-MM>/
   --pourquoi <texte>    raison de l'archivage, ecrite dans le NOTE.md du mois
   --racine <chemin>     racine du Hub (defaut: ${RACINE_DEFAUT}, ou HUB_ROOT)
   --retirer <chemin>    eteint une marque (chemin relatif a la racine du Hub) et
@@ -58,8 +74,10 @@ Regles appliquees :
     <projet>/test/<version>/, JAMAIS a cote d'une version livree. Regle de Ryan
     du 2026-09-10 : le dossier d'un projet ne montre que ce qui est parti chez
     un client ;
-  - une version SANS suffixe -T est la version publiee ; il ne peut y en avoir
-    qu'une hors archive/ (utiliser --archiver pour remplacer l'ancienne) ;
+  - une version SANS suffixe -T est une version LIVREE : elle va dans
+    <projet>/deployed/<version>/, et PLUSIEURS y cohabitent — le Hub garde tout
+    ce qui est parti chez un client. C'est Core qui dit laquelle est la derniere,
+    et qui coupe l'acces aux schemas trop anciens (Ryan, 2026-09-20) ;
   - un artefact deja present dans une version PUBLIEE n'est jamais ecrase : il
     faut --archiver --pourquoi pour le descendre d'abord (un README ou une
     CHECKLIST, eux, se redeposent librement : documenter une version livree
@@ -357,11 +375,13 @@ async function ecrireEmpreintes(dossierVersion, projet, version) {
 /* Archivage de la version publiee                                     */
 /* ------------------------------------------------------------------ */
 
-function versionsPubliees(dossierProjet) {
-  if (!fs.existsSync(dossierProjet)) return []
+/** Ce qui est DEJA parti chez un client, lu dans deployed/. Plusieurs, c est normal. */
+function versionsLivrees(dossierProjet) {
+  const dossier = path.join(dossierProjet, DEPLOYED)
+  if (!fs.existsSync(dossier)) return []
   return fs
-    .readdirSync(dossierProjet, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== 'archive' && e.name !== TEST && VERSION.test(e.name))
+    .readdirSync(dossier, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && VERSION.test(e.name))
     .map((e) => e.name)
     .filter((nom) => !nom.includes('-'))
 }
@@ -385,7 +405,7 @@ async function archiver(dossierProjet, version, pourquoi) {
         `ajoute la raison au NOTE.md du mois, puis relance SANS --archiver.`,
     )
   }
-  await fsp.rename(path.join(dossierProjet, version), destination)
+  await fsp.rename(path.join(dossierProjet, DEPLOYED, version), destination)
 
   const note = path.join(cible, 'NOTE.md')
   const ligne = `- **${version}** archivee le ${jourCourant()} — ${pourquoi}\n`
@@ -463,11 +483,11 @@ async function main() {
   //
   // Les builds de test vont donc dans `<projet>/test/<version>/`, et rien d'autre ne
   // change : meme README, meme CHECKLIST, memes empreintes.
-  const dossierVersion = estTest ? path.join(dossierProjet, TEST, version) : path.join(dossierProjet, version)
+  const dossierVersion = estTest ? path.join(dossierProjet, TEST, version) : path.join(dossierProjet, DEPLOYED, version)
   // ⚠ LE CHEMIN AFFICHE ET LE CHEMIN DES MARQUES DOIVENT ETRE LE VRAI. Sans ca, le
   // script annonce `projet/1.0.0-T1/x.apk` alors que le fichier est dans `projet/test/...`,
   // et le fichier de guidage pointe a cote — la marque ne brille sur rien.
-  const rel = estTest ? `${projet}/${TEST}/${version}` : `${projet}/${version}`
+  const rel = estTest ? `${projet}/${TEST}/${version}` : `${projet}/${DEPLOYED}/${version}`
 
   // Un binaire publie ne disparait JAMAIS sans laisser de trace.
   //
@@ -488,7 +508,7 @@ async function main() {
       .filter((nom) => fs.existsSync(path.join(dossierVersion, nom)))
     if (ecrases.length > 0 && !args.archiver) {
       throw new Error(
-        `${projet}/${version} est PUBLIEE et contient deja ${ecrases.join(', ')}. ` +
+        `${rel} est DEJA LIVREE et contient deja ${ecrases.join(', ')}. ` +
           `Deposer par-dessus detruirait le binaire publie sans trace. Relancer avec ` +
           `--archiver --pourquoi "<raison>" pour le descendre dans archive/ d abord, ` +
           `ou deposer un build de test (${version}-T<n>).`,
@@ -502,21 +522,12 @@ async function main() {
   }
 
   // Invariant : au plus une version publiee hors archive/.
+  // PLUS D INVARIANT D UNICITE : plusieurs versions livrees cohabitent dans deployed/,
+  // et c est le but. On se contente de DIRE ce qui est deja la — une livraison qui
+  // s ajoute a cinq autres n est pas la meme chose qu une premiere livraison.
   if (!estTest) {
-    const publiees = versionsPubliees(dossierProjet).filter((v) => v !== version)
-    if (publiees.length > 0) {
-      if (!args.archiver) {
-        throw new Error(
-          `${projet} publie deja ${publiees.join(', ')}. Relancer avec --archiver ` +
-            `--pourquoi "<raison>" pour la descendre dans archive/, ou deposer un build de test (-T<n>).`,
-        )
-      }
-      if (!args.pourquoi) throw new Error('--archiver exige --pourquoi "<raison>" : un NOTE.md sans raison ne sert a rien.')
-      for (const ancienne of publiees) {
-        const vers = await archiver(dossierProjet, ancienne, args.pourquoi)
-        console.log(`archive : ${ancienne} -> ${vers}`)
-      }
-    }
+    const deja = versionsLivrees(dossierProjet).filter((v) => v !== version)
+    if (deja.length > 0) console.log(`deja livre : ${deja.sort().join(', ')}`)
   }
 
   await fsp.mkdir(dossierVersion, { recursive: true })
