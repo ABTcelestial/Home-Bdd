@@ -105,7 +105,8 @@ describe('le depot confronte le binaire a ce que le dossier annonce', () => {
     const { code, sortie } = deposer(racine, '2.0.0', faux)
     assert.equal(code, 0, sortie)
     assert.doesNotMatch(sortie, /DECLARE la version/)
-    assert.ok(existsSync(join(racine, 'app-essai', '2.0.0', 'paquet.zip')), sortie)
+    // Une version livree vit dans deployed/ depuis le #7 (2026-09-20) : ce chemin etait reste l'ancien.
+    assert.ok(existsSync(join(racine, 'app-essai', 'deployed', '2.0.0', 'paquet.zip')), sortie)
   })
 
   test("un .exe illisible se declare non verifie, il ne bloque pas", () => {
