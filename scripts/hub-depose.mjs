@@ -67,6 +67,10 @@ hub-depose — deposer un livrable dans le Celestial Hub
   --racine <chemin>     racine du Hub (defaut: ${RACINE_DEFAUT}, ou HUB_ROOT)
   --retirer <chemin>    eteint une marque (chemin relatif a la racine du Hub) et
                         s'arrete la. Le fichier n'est pas supprime.
+  --elaguer             garde les --garder <N> (defaut 3) builds de TEST les plus
+                        recents de chaque projet, et eteint les marques qui ne
+                        pointent plus sur rien. N'affiche que le plan, sauf avec
+                        --executer. Ne touche jamais deployed/, archive/ ni Docs.
   --aide
 
 Regles appliquees :
@@ -99,7 +103,7 @@ function lireArgs(argv) {
     const a = argv[i]
     if (!a.startsWith('--')) continue
     const cle = a.slice(2)
-    if (cle === 'aide' || cle === 'archiver') {
+    if (cle === 'aide' || cle === 'archiver' || cle === 'elaguer' || cle === 'executer') {
       out[cle] = true
       continue
     }
@@ -420,6 +424,83 @@ async function archiver(dossierProjet, version, pourquoi) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Elagage des builds de test                                          */
+/* ------------------------------------------------------------------ */
+//
+// POURQUOI (Ryan, 2026-10-20 : « oui » a garder 3 builds de test par app). Le 20/10, le Hub portait
+// 8 builds de test de Chantiers mobile, 6 de la Salle des Fetes, 5 de Beton et de Fonds ; et 44 des
+// 75 marques de .hub-guide.json pointaient sur des fichiers disparus. Un build de test se reconstruit ;
+// une version LIVREE (deployed/) et archive/ ne sont jamais touchees ici.
+
+/** -1, 0 ou 1 : la version a est plus ancienne, egale ou plus recente que b (base, puis suffixe lettre + nombre). */
+export function comparerVersions(a, b) {
+  const lire = (v) => {
+    const [base, suffixe = ''] = v.split('-')
+    const m = suffixe.match(/^([A-Za-z]*)(\d*)(.*)$/)
+    return { base: base.split('.').map(Number), lettres: m[1], nombre: m[2] === '' ? -1 : Number(m[2]), reste: m[3] }
+  }
+  const x = lire(a)
+  const y = lire(b)
+  for (let i = 0; i < 3; i++) if (x.base[i] !== y.base[i]) return x.base[i] < y.base[i] ? -1 : 1
+  if (x.lettres !== y.lettres) return x.lettres < y.lettres ? -1 : 1
+  if (x.nombre !== y.nombre) return x.nombre < y.nombre ? -1 : 1
+  return x.reste === y.reste ? 0 : x.reste < y.reste ? -1 : 1
+}
+
+/**
+ * Le plan d'elagage, sans rien toucher : pour chaque projet, les dossiers de test au-dela des `garder`
+ * plus recents ; et les marques du guide qui tomberaient avec eux ou ne pointent deja plus sur rien.
+ */
+export function planElagage(racine, garder, guide = {}) {
+  if (!Number.isInteger(garder) || garder < 1) throw new Error(`--garder attend un entier >= 1 (recu : ${garder}).`)
+  const supprimes = []
+  for (const e of fs.readdirSync(racine, { withFileTypes: true })) {
+    if (!e.isDirectory() || !PROJET.test(e.name)) continue
+    const dossierTest = path.join(racine, e.name, TEST)
+    if (!fs.existsSync(dossierTest)) continue
+    const versions = fs
+      .readdirSync(dossierTest, { withFileTypes: true })
+      .filter((v) => v.isDirectory() && VERSION.test(v.name) && v.name.includes('-'))
+      .map((v) => v.name)
+      .sort(comparerVersions)
+      .reverse()
+    for (const v of versions.slice(garder)) supprimes.push(`${e.name}/${TEST}/${v}`)
+  }
+  const sous = (cle) => supprimes.some((d) => cle === d || cle.startsWith(d + '/'))
+  const marques = Object.keys(guide).filter((cle) => sous(cle) || !fs.existsSync(path.join(racine, cle)))
+  return { supprimes, marques }
+}
+
+async function elaguer(racine, garder, executer) {
+  const cible = path.join(racine, GUIDE)
+  let guide = {}
+  try {
+    guide = JSON.parse(await fsp.readFile(cible, 'utf8'))
+  } catch {
+    // pas de guide : rien a eteindre, l'elagage des dossiers reste possible
+  }
+  const { supprimes, marques } = planElagage(racine, garder, guide)
+  console.log(`${executer ? 'elagage' : 'plan (rien n est touche sans --executer)'} : garder ${garder} build(s) de test par projet`)
+  for (const d of supprimes) console.log(`  supprimer ${d}/`)
+  console.log(`  ${marques.length} marque(s) a eteindre (dans un dossier supprime, ou ne pointant plus sur rien)`)
+  if (!executer) return
+  for (const d of supprimes) {
+    const absolu = path.resolve(racine, d)
+    // Garde-fou : on n efface QUE <racine>/<projet>/test/<version>, jamais au-dessus.
+    const relatif = path.relative(path.resolve(racine), absolu).split(path.sep)
+    if (relatif.length !== 3 || relatif[1] !== TEST || relatif.includes('..')) throw new Error(`refus : ${d} n est pas un dossier de test`)
+    await fsp.rm(absolu, { recursive: true, force: true })
+  }
+  if (marques.length) {
+    for (const cle of marques) delete guide[cle]
+    const tmp = cible + '.tmp'
+    await fsp.writeFile(tmp, JSON.stringify(guide, null, 2) + '\n', 'utf8')
+    await fsp.rename(tmp, cible)
+  }
+  console.log(`fait : ${supprimes.length} dossier(s) supprime(s), ${marques.length} marque(s) eteinte(s)`)
+}
+
+/* ------------------------------------------------------------------ */
 
 async function main() {
   const args = lireArgs(process.argv.slice(2))
@@ -430,6 +511,11 @@ async function main() {
 
   const racine = args.racine || process.env.HUB_ROOT || RACINE_DEFAUT
   const { projet, version } = args
+
+  if (args.elaguer) {
+    await elaguer(racine, args.garder === undefined ? 3 : Number(args.garder), Boolean(args.executer))
+    return
+  }
 
   // Retrait d'une marque : rien d'autre a fournir, et le fichier reste en place.
   if (args.retirer) {
