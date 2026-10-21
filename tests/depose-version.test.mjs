@@ -43,7 +43,7 @@ function deposer(racine, version, fichier, env = {}) {
 
 /** Un APK reel du Hub, s'il y en a un sur ce poste. Sinon les cas qui en dependent se taisent. */
 function apkReel() {
-  const dossier = 'D:/CelestialHub/chantiers-mobile/1.1.0'
+  const dossier = 'D:/CelestialHub/chantiers-mobile/deployed/1.1.0'
   if (!existsSync(dossier)) return null
   const nom = readdirSync(dossier).find((n) => n.toLowerCase().endsWith('.apk'))
   return nom ? { chemin: join(dossier, nom), version: '1.1.0' } : null
@@ -105,7 +105,8 @@ describe('le depot confronte le binaire a ce que le dossier annonce', () => {
     const { code, sortie } = deposer(racine, '2.0.0', faux)
     assert.equal(code, 0, sortie)
     assert.doesNotMatch(sortie, /DECLARE la version/)
-    assert.ok(existsSync(join(racine, 'app-essai', '2.0.0', 'paquet.zip')), sortie)
+    // Une version livree vit dans deployed/ depuis le #7 (2026-09-20) : ce chemin etait reste l'ancien.
+    assert.ok(existsSync(join(racine, 'app-essai', 'deployed', '2.0.0', 'paquet.zip')), sortie)
   })
 
   test("un .exe illisible se declare non verifie, il ne bloque pas", () => {
@@ -134,7 +135,7 @@ function exeReel(dossier, version) {
   return nom ? { chemin: join(dossier, nom), version } : null
 }
 
-const EXE = exeReel('D:/CelestialHub/chantiers-desktop/1.1.0', '1.1.0')
+const EXE = exeReel('D:/CelestialHub/chantiers-desktop/deployed/1.1.0', '1.1.0')
 const EXE_SUFFIXE = exeReel('D:/CelestialHub/erp-desktop/1.0.0-T13', '1.0.0-T13')
 
 describe("un installeur Electron est juge sur ce qu'il declare", () => {
