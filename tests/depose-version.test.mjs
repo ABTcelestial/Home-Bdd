@@ -136,7 +136,7 @@ function exeReel(dossier, version) {
 }
 
 const EXE = exeReel('D:/CelestialHub/chantiers-desktop/deployed/1.1.0', '1.1.0')
-const EXE_SUFFIXE = exeReel('D:/CelestialHub/erp-desktop/1.0.0-T13', '1.0.0-T13')
+const EXE_SUFFIXE = exeReel('D:/CelestialHub/celestial-beton/test/1.0.0-T29', '1.0.0-T29')
 
 describe("un installeur Electron est juge sur ce qu'il declare", () => {
   test('la version juste passe', { skip: EXE === null && 'aucun installeur sur ce poste' }, () => {
