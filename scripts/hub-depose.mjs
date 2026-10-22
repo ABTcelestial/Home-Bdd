@@ -205,7 +205,7 @@ const EMPREINTES = 'EMPREINTES.md'
 //
 //   · un APK depose en `1.0.0-T4` declare `1.0.0` — la BASE, sans le suffixe ;
 //   · un installeur Electron depose en `1.0.0-T10` declare `1.0.0-T10` — TOUT, suffixe
-//     compris (mesure : les six installeurs de l'ERP, un par dossier de test).
+//     compris (mesure : les six installeurs du Béton, un par dossier de test).
 //
 // La regle accepte donc la version COMPLETE ou sa BASE. Elle reste stricte sur ce qui
 // compte : un binaire 1.1.0 depose en 1.0.0-T4 ne correspond ni a l'une ni a l'autre.
