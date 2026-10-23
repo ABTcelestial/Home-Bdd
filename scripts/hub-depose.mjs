@@ -600,11 +600,17 @@ async function main() {
           `ou deposer un build de test (${version}-T<n>).`,
       )
     }
-    if (ecrases.length > 0) {
+    // ⚠ --archiver DEMANDE EXPLICITEMENT archive aussi quand rien n'est ecrase (2026-10-23). Avant, il ne descendait la
+    // version que si un artefact du meme nom arrivait : `--archiver --readme` pour ARRETER une app (Automate Manager)
+    // ne faisait RIEN, sans un mot — l'installeur restait dans deployed/ a cote d'un README qui le disait archive.
+    if (ecrases.length > 0 || args.archiver) {
       if (!args.pourquoi) throw new Error('--archiver exige --pourquoi "<raison>" : un NOTE.md sans raison ne sert a rien.')
       const vers = await archiver(dossierProjet, version, args.pourquoi)
       console.log(`archive : ${version} -> ${vers}`)
     }
+  } else if (!estTest && args.archiver) {
+    // Rien a descendre : le dire, au lieu de laisser croire qu'une version a ete archivee.
+    console.log(`archive : ${rel} n'existe pas encore — rien a archiver.`)
   }
 
   // Invariant : au plus une version publiee hors archive/.
